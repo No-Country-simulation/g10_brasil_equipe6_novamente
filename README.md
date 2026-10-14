@@ -176,7 +176,7 @@ A documentação oficial permite diferentes abordagens tecnológicas. As ferrame
 | Armazenamento de arquivos | OCI Object Storage |
 | Infraestrutura opcional | OCI Compute Always Free |
 
-> **Nota:** as tecnologias definitivas serão escolhidas durante o planejamento e a implementação. A documentação do hackathon permite o uso de ferramentas equivalentes.
+> **Nota:** as tecnologias definitivas serão escolhidas durante o planejamento e a implementação.
 
 ## ☁️ Oracle Cloud Infrastructure (OCI)
 
