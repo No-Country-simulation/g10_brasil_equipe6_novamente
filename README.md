@@ -4,308 +4,118 @@
 
 **Hackathon ONE G10 — Oracle Next Education & Alura**
 
-> **Status do projeto:** Em planejamento — desenvolvimento ainda não iniciado.
+> **Status do projeto:** Em desenvolvimento ativo 🚀. A stack tecnológica e a arquitetura foram definidas e a equipe está focada na implementação do MVP.
 
 ## 📖 Sobre o projeto
 
-O **NovaMente** é uma solução de tecnologia educacional (EdTech) que tem como objetivo transformar documentações técnicas, manuais de software, artigos e bases de conhecimento em conteúdos educacionais personalizados, utilizando **Inteligência Artificial Generativa, Retrieval-Augmented Generation (RAG) e orquestração de agentes inteligentes**.
+O **NovaMente** é uma solução de tecnologia educacional (EdTech) que tem como objetivo transformar documentações técnicas, manuais de software, artigos e bases de conhecimento em conteúdos educacionais personalizados, utilizando **Inteligência Artificial Generativa, Retrieval-Augmented Generation (RAG) e orquestração com LangChain**.
 
 A proposta é facilitar o aprendizado de conteúdos técnicos complexos, adaptando a linguagem, a profundidade e a estrutura pedagógica de acordo com o perfil do destinatário, o contexto de aplicação e o formato de aprendizagem desejado.
 
-O projeto será desenvolvido no contexto do **Hackathon do Programa Oracle Next Education (ONE) — Grupo 10 - Equipe 6**, em parceria com a Alura.
+O projeto está sendo desenvolvido no contexto do **Hackathon do Programa Oracle Next Education (ONE) — Grupo 10**, em parceria com a Alura.
 
-## 🎯 Problema
+## 🚀 Objetivo do MVP
 
-Empresas, instituições de ensino e equipes de tecnologia frequentemente precisam capacitar profissionais utilizando documentações técnicas extensas e complexas.
+Desenvolver um **Produto Mínimo Viável (MVP)** 100% em Python, capaz de:
 
-Entretanto, um mesmo material pode ser difícil de compreender para determinados públicos devido ao uso de terminologias especializadas, diferentes níveis de conhecimento prévio e necessidades distintas de aprendizagem.
+1. Receber e processar documentos técnicos nos formatos PDF, Markdown ou texto via interface Streamlit.
+2. Extrair, segmentar e indexar o conteúdo utilizando RAG (ChromaDB).
+3. Utilizar o modelo Google Gemini (via LangChain) para adaptar materiais aos perfis e formatos solicitados.
+4. Gerar conteúdos educacionais estruturados rigorosamente em JSON.
+5. Persistir os documentos originais, os embeddings (índices vetoriais) e os conteúdos gerados no **Oracle Cloud Infrastructure (OCI) Object Storage**, utilizando a camada Always Free.
+6. Realizar o deploy da aplicação em um container Docker hospedado em uma **OCI Compute (VM)**.
 
-A adaptação manual desses conteúdos exige tempo e esforço de especialistas técnicos e profissionais de educação.
+## 🛠️ Stack Tecnológica Definida
 
-O NovaMente busca reduzir esse esforço, automatizando a transformação de documentos em materiais educacionais adequados a diferentes perfis, sem perder a fidelidade às informações originais.
+Nossa equipe optou por uma arquitetura unificada e simplificada, focada em Python, para garantir velocidade de entrega e evitar gargalos de integração entre front-end e back-end. **Não utilizaremos bancos de dados relacionais.**
 
-## 🚀 Objetivo
+| Categoria | Tecnologias Definidas |
+|---|---|
+| **Linguagem Base** | Python 3 |
+| **Interface (UI)** | Streamlit |
+| **Orquestração IA** | LangChain |
+| **LLM Principal** | Google Gemini |
+| **RAG / Vector Store** | ChromaDB (índice local persistido em nuvem) |
+| **Processamento PDF** | PyPDF |
+| **Armazenamento** | OCI Object Storage (Documentos, JSONs e backup dos Embeddings) |
+| **Infraestrutura / Deploy** | Docker + OCI Compute (VM Always Free) |
 
-Desenvolver um **Produto Mínimo Viável (MVP)** capaz de:
+## 🧠 Arquitetura e Fluxo de Dados
 
-1. Receber e processar documentos técnicos nos formatos PDF, Markdown ou texto.
-2. Extrair, segmentar e indexar o conteúdo utilizando técnicas de RAG.
-3. Utilizar modelos de linguagem (LLMs) para adaptar materiais aos perfis e formatos solicitados.
-4. Gerar conteúdos educacionais estruturados em JSON.
-5. Avaliar a coerência didática e a fidelidade dos conteúdos gerados.
-6. Disponibilizar uma interface interativa ou API REST funcional.
-7. Persistir os documentos originais e os conteúdos gerados no **Oracle Cloud Infrastructure (OCI) Object Storage**, utilizando a camada Always Free.
-
-## ✨ Funcionalidades previstas
-
-### 1. Ingestão de documentos
-
-O sistema deverá permitir a entrada de materiais técnicos nos seguintes formatos:
-
-- PDF;
-- Markdown;
-- Texto simples.
-
-Os documentos serão processados e preparados para utilização pelo mecanismo de recuperação de informações.
-
-### 2. Personalização do conteúdo educacional
-
-O usuário poderá configurar a adaptação do conteúdo utilizando diferentes parâmetros.
-
-**Perfil do destinatário:**
-
-- Iniciante ou profissional em transição de carreira;
-- Desenvolvedor Júnior ou Pleno;
-- Líder Técnico ou Arquiteto;
-- Gestor ou Executivo não técnico.
-
-**Formato pedagógico de saída:**
-
-- Guia prático passo a passo (tutorial);
-- Flashcards de memorização;
-- Quiz interativo com justificativas;
-- Resumo executivo (TL;DR);
-- Roteiro de aula ou vídeo.
-
-**Nicho ou contexto de aplicação:**
-
-- Fintech;
-- Saúde;
-- E-commerce;
-- Geral.
-
-O sistema deverá adaptar a linguagem, os exemplos e a profundidade das explicações conforme os parâmetros selecionados.
-
-### 3. Recuperação de informações com RAG
-
-O NovaMente utilizará técnicas de **Retrieval-Augmented Generation (RAG)** para fundamentar os conteúdos educacionais nos documentos fornecidos.
-
-O processamento deverá contemplar:
-
-1. Extração do conteúdo textual.
-2. Segmentação em trechos (*chunking*).
-3. Geração de representações vetoriais (*embeddings*).
-4. Armazenamento dos embeddings em uma base vetorial (*Vector Store*).
-5. Recuperação dos trechos relevantes.
-6. Utilização das informações recuperadas como contexto para a geração de conteúdo.
-
-O objetivo é aumentar a fidelidade técnica e reduzir a ocorrência de informações não fundamentadas nos materiais originais.
-
-### 4. Geração de conteúdo com IA
-
-A aplicação utilizará modelos de linguagem para:
-
-- Reescrever explicações técnicas;
-- Adaptar a linguagem ao público;
-- Criar exemplos contextualizados;
-- Estruturar materiais pedagógicos;
-- Identificar conceitos-chave e pré-requisitos;
-- Estimar o tempo necessário para estudo;
-- Avaliar a coerência didática.
-
-A solução poderá utilizar modelos como Google Gemini, OpenAI, Anthropic Claude, Grok, Ollama ou alternativas equivalentes.
-
-A escolha do provedor será definida durante o desenvolvimento.
-
-### 5. Orquestração inteligente
-
-O processamento poderá utilizar cadeias de prompts ou agentes inteligentes para organizar as etapas de geração.
-
-Entre as responsabilidades previstas estão:
-
-- Recuperar informações dos documentos;
-- Planejar a estrutura pedagógica;
-- Produzir o conteúdo adaptado;
-- Revisar a coerência e a fidelidade das informações;
-- Estruturar os resultados no formato esperado.
-
-A arquitetura deverá incluir mecanismos de verificação destinados a mitigar alucinações e inconsistências.
-
-### 6. Saída estruturada
-
-Os resultados serão disponibilizados em **JSON estruturado**, permitindo sua utilização pela interface da aplicação ou integração com sistemas externos.
-
-Os resultados deverão contemplar informações como:
-
-- Perfil aplicado;
-- Formato gerado;
-- Conteúdo educacional adaptado;
-- Conceitos-chave;
-- Tempo estimado de estudo;
-- Avaliação de qualidade;
-- Informações de armazenamento.
-
-## 🧠 Arquitetura conceitual
-
-A solução será organizada em um fluxo de processamento que conecta a ingestão documental, a recuperação de informações e a geração de conteúdo educacional.
+A solução é organizada em um fluxo de processamento direto acionado pela interface do usuário:
 
 ```mermaid
 flowchart TD
-    A["Documento técnico"] --> B["Ingestão e extração"]
-    B --> C["Segmentação em chunks"]
-    C --> D["Geração de embeddings"]
-    D --> E[("Vector Store")]
-
-    F["Perfil, formato e nicho"] --> G["Orquestração de IA"]
-    E --> H["Recuperação RAG"]
-    H --> G
-    G --> I["LLM: geração e adaptação"]
-    I --> J["Revisão e validação"]
-    J --> K["JSON estruturado"]
-
-    B --> L[("OCI Object Storage")]
-    K --> L
-    K --> M["Interface ou API REST"]
+    UI["Interface (Streamlit)"] -->|Upload PDF/TXT| RAG["Módulo RAG (ChromaDB)"]
+    UI -->|Parâmetros (Perfil, Formato)| ORQ["Módulo IA (LangChain)"]
+    
+    RAG -->|Chunks Relevantes| ORQ
+    ORQ -->|Prompt + Contexto| LLM["Google Gemini"]
+    LLM -->|Resposta Estruturada| ORQ
+    
+    ORQ -->|JSON Validado| UI
+    
+    RAG -.->|Backup do Índice| OCI[("OCI Object Storage")]
+    UI -.->|Salva Original e JSON| OCI
 ```
 
-O diagrama representa a arquitetura conceitual planejada. Sua implementação poderá ser ajustada conforme as tecnologias selecionadas pela equipe.
+## 📂 Estrutura do Repositório
 
-## 🛠️ Tecnologias e ferramentas
+Para evitar conflitos de merge (já que todos somos iniciantes e o time tem forte viés de backend), adotamos uma estrutura plana ("flat"). Cada arquivo principal tem um "dono" responsável por sua manutenção durante o hackathon.
 
-A documentação oficial permite diferentes abordagens tecnológicas. As ferramentas abaixo são opções previstas ou recomendadas para o desenvolvimento.
+```text
+novamente-mvp/
+├── app.py                 # Interface principal no Streamlit.
+├── requirements.txt       # Dependências do projeto (streamlit, langchain, etc).
+├── .env.example           # Template de variáveis de ambiente (nunca commitar o .env real!).
+├── .gitignore             # Bloqueios de arquivos sensíveis e cache.
+├── Dockerfile             # Script de conteinerização para deploy na OCI.
+├── README.md              # Documentação oficial do projeto.
+├── src/                   # Motor do Backend
+│   ├── rag.py             # Pipeline de ingestão, chunking e ChromaDB.
+│   ├── llm.py             # Orquestração de chains LangChain e conexão com Gemini.
+│   └── storage.py         # Integração com OCI SDK (Object Storage).
+└── prompts_e_testes/      # Validação de prompts e exemplos de JSON estruturado.
+```
 
-| Categoria | Tecnologias e ferramentas |
-|---|---|
-| Linguagens e backend | Python, Node.js, FastAPI, Flask |
-| Interface | Streamlit, Gradio ou alternativa equivalente |
-| Modelos de linguagem | Gemini, OpenAI, Claude, Grok, Ollama ou equivalentes |
-| Orquestração | LangChain, LangGraph |
-| Processamento de PDF | PyPDF |
-| Busca vetorial | ChromaDB, FAISS ou similar |
-| Validação de dados | Pydantic, Structured Outputs |
-| Armazenamento de arquivos | OCI Object Storage |
-| Infraestrutura opcional | OCI Compute Always Free |
+## ⚙️ Instalação e Execução Local
 
-> **Nota:** as tecnologias definitivas serão escolhidas durante o planejamento e a implementação.
+Siga os passos abaixo para rodar a aplicação na sua máquina durante o desenvolvimento:
 
-## ☁️ Oracle Cloud Infrastructure (OCI)
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/SEU_USUARIO/novamente-mvp.git
+   cd novamente-mvp
+   ```
 
-A utilização do **OCI Object Storage** é um requisito obrigatório do MVP.
+2. **Crie e ative um ambiente virtual (Recomendado):**
+   ```bash
+   python -m venv venv
+   # No Windows:
+   venv\Scripts\activate
+   # No Linux/Mac:
+   source venv/bin/activate
+   ```
 
-O sistema deverá armazenar:
+3. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-- Documentos técnicos originais enviados à aplicação;
-- Arquivos JSON contendo os conteúdos educacionais gerados.
+4. **Configuração de Variáveis de Ambiente:**
+   Copie o arquivo `.env.example` para um novo arquivo chamado `.env` e preencha com suas chaves de API locais (Gemini API Key, OCI Config). **Atenção: O arquivo `.env` já está no `.gitignore` para sua segurança.**
 
-A integração poderá ser implementada utilizando os SDKs oficiais da OCI ou chamadas à API REST.
+5. **Execute a aplicação Streamlit:**
+   ```bash
+   streamlit run app.py
+   ```
+   A interface abrirá automaticamente no seu navegador no endereço `http://localhost:8501`.
 
-### Restrições de infraestrutura
+## 🤝 Regras de Contribuição da Equipe
 
-O projeto deverá utilizar exclusivamente recursos abrangidos pela camada **Always Free** da OCI, evitando configurações que possam gerar custos monetários.
-
-A hospedagem completa da aplicação em uma instância OCI Compute Always Free é considerada um diferencial opcional, não um requisito obrigatório.
-
-## 📋 Requisitos mínimos do MVP
-
-Os seguintes critérios deverão ser atendidos para a entrega do hackathon:
-
-- [ ] Ingestão funcional de documentos PDF, Markdown ou texto.
-- [ ] Implementação de RAG com chunking, embeddings e busca vetorial.
-- [ ] Orquestração de prompts ou fluxos inteligentes utilizando uma LLM.
-- [ ] Adaptação do mesmo conteúdo para pelo menos dois perfis diferentes.
-- [ ] Geração de pelo menos dois formatos pedagógicos distintos.
-- [ ] Disponibilização de saídas em JSON estruturado.
-- [ ] Implementação de interface interativa ou API REST operacional.
-- [ ] Integração funcional com OCI Object Storage na camada Always Free.
-- [ ] Persistência dos documentos originais e conteúdos gerados.
-- [ ] Apresentação de pelo menos três cenários de execução.
-- [ ] Documentação do projeto no GitHub, incluindo arquitetura e fluxo de IA.
-
-## 🌟 Diferenciais opcionais
-
-A documentação do hackathon também apresenta funcionalidades que poderão ser desenvolvidas conforme a disponibilidade da equipe.
-
-### Sistema multiagentes com LangGraph
-
-Implementação de agentes especializados, como:
-
-- Agente Pesquisador RAG;
-- Agente Redator Pedagógico;
-- Agente Crítico/Revisor.
-
-### Quizzes com avaliação em tempo real
-
-Disponibilização de uma interface na qual o estudante possa responder às questões geradas e receber feedback explicativo imediato.
-
-### Suporte multimodal
-
-Interpretação de diagramas técnicos presentes nos documentos originais.
-
-### Exportação em múltiplos formatos
-
-Possibilidade de exportar conteúdos educacionais em:
-
-- Markdown;
-- PDF formatado;
-- CSV compatível com Anki.
-
-### Deploy em OCI Compute
-
-Hospedagem da aplicação em uma instância Linux utilizando recursos da camada Always Free da Oracle Cloud Infrastructure.
-
-> Os itens desta seção são diferenciais opcionais e não fazem parte dos critérios mínimos obrigatórios.
-
-## 🧪 Demonstração do projeto
-
-A entrega deverá apresentar **no mínimo três cenários distintos de adaptação de um mesmo documento técnico**.
-
-Os cenários deverão demonstrar como a inteligência artificial consegue adaptar a profundidade, a linguagem e a organização do conteúdo para diferentes públicos e formatos.
-
-A documentação de cada execução poderá apresentar:
-
-1. Documento técnico utilizado;
-2. Perfil do destinatário;
-3. Formato pedagógico solicitado;
-4. Conteúdo gerado;
-5. Evidências de fidelidade ao material original;
-6. Resultado estruturado;
-7. Persistência no OCI Object Storage.
-
-## 📚 Formações relacionadas
-
-Conforme o mapeamento do Programa ONE — Grupo 10, o projeto está associado às seguintes formações:
-
-**Formações indispensáveis:**
-
-- Inteligência de Dados e RAG Avançado;
-- Oracle Cloud Infrastructure (OCI).
-
-**Formações de reforço:**
-
-- Engenharia de Agentes e Automação;
-- Desarrollo y Orquestación con IA Generativa.
-
-Essas formações fornecem a base conceitual para o desenvolvimento das funcionalidades de recuperação, geração, orquestração e armazenamento.
-
-## ⚙️ Instalação e execução
-
-O projeto encontra-se em fase inicial de planejamento.
-
-As instruções de instalação, configuração das variáveis de ambiente, execução local e integração com a OCI serão documentadas conforme a implementação avançar.
-
-## 📂 Estrutura do repositório
-
-A estrutura de diretórios será definida conforme a arquitetura e as tecnologias selecionadas pela equipe.
-
-Este README será atualizado para refletir a organização real do código-fonte.
-
-## 🤝 Desenvolvimento colaborativo
-
-O NovaMente será desenvolvido no contexto do **Hackathon ONE G10 — Oracle Next Education & Alura**.
-
-O repositório será utilizado para colaboração, versionamento e documentação das atividades da equipe.
-
-As contribuições deverão seguir as convenções de desenvolvimento e organização estabelecidas pelos participantes.
-
-## 📄 Referência
-
-A especificação funcional deste projeto está fundamentada no documento:
-
-**Projeto 1 — NovaMente — Sistema Inteligente de Adaptação e Geração de Conteúdo Educacional**
-
-Programa Oracle Next Education — Grupo 10  
-Hackathon ONE G10 — Oracle Next Education & Alura
+1. **Nunca suba chaves de API:** Verifique sempre se o seu `.env` não está sendo enviado no commit.
+2. **Trabalhe na sua Branch:** Crie ramificações para suas tarefas (ex: `feat-moab-rag`, `feat-leticia-gemini`).
+3. **Respeite o escopo dos arquivos:** Edite preferencialmente os arquivos designados à sua frente de trabalho (`rag.py`, `llm.py`, `storage.py`, `app.py`) para minimizar conflitos na hora de juntar (merge) o código na branch `main`.
 
 ---
-
-**NovaMente — Sistema Inteligente de Adaptação e Geração de Conteúdo Educacional.**
+*Projeto desenvolvido para o Hackathon ONE G10 — Oracle Next Education & Alura*
