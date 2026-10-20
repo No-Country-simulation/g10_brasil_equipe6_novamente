@@ -84,7 +84,7 @@ Siga os passos abaixo para rodar a aplicação na sua máquina durante o desenvo
 
 1. **Clone o repositório:**
    ```bash
-   git clone https://github.com/SEU_USUARIO/novamente-mvp.git
+   git clone git@github.com:No-Country-simulation/g10_brasil_equipe6_novamente.git
    cd novamente-mvp
    ```
 
