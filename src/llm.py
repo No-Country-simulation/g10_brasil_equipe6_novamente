@@ -3,6 +3,7 @@
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -10,8 +11,11 @@ from langchain_core.output_parsers import StrOutputParser
 load_dotenv()  
 
 
-def get_llm(temperature: float = 0.3) -> ChatGoogleGenerativeAI:
-   
+def get_llm(temperature: float = 0.3) -> ChatGoogleGenerativeAI | ChatOllama:
+    # Permite usar um modelo local sem alterar o fluxo padrão com Gemini.
+    if os.getenv("USE_LOCAL_LLM", "False") == "True":
+        return ChatOllama(model="qwen2.5:7b-instruct", temperature=temperature)
+
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY não encontrada. Configure no arquivo .env")
