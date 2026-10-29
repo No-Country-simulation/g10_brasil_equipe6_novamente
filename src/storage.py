@@ -14,8 +14,14 @@ def _client() -> oci.object_storage.ObjectStorageClient:
         file_location=os.getenv("OCI_CONFIG_FILE", "~/.oci/config"),
         profile_name=os.getenv("OCI_PROFILE", "DEFAULT"),
     )
-    oci.config.validate_config(config)  # erro claro se a configuração estiver incompleta
-    return oci.object_storage.ObjectStorageClient(config)
+    oci.config.validate_config(config)
+
+    # Se a variável OCI_ENDPOINT estiver definida (ex: http://localhost:12000),
+    # o SDK usará o emulador em vez da nuvem real.
+    endpoint = os.getenv("OCI_ENDPOINT")
+
+    return oci.object_storage.ObjectStorageClient(config, service_endpoint=endpoint)
+
 
 
 @lru_cache(maxsize=1)
