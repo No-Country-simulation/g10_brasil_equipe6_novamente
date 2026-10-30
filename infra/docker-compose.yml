@@ -1,0 +1,9 @@
+services:
+  oci-emulator:
+    image: cameritelabs/oci-emulator:latest
+    container_name: oci_emulator_local
+    ports:
+      - "12000:12000"
+    environment:
+      - PORT=12000
+    restart: unless-stopped

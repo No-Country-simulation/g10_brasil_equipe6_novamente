@@ -1,3 +1,4 @@
+oci
 langchain
 langchain-google-genai
 langchain-ollama
