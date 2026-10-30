@@ -4,11 +4,12 @@ import os
 import json
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.exceptions import OutputParserException
 
 
 load_dotenv()  
@@ -60,6 +61,13 @@ class SaidaLLM(BaseModel):
     metadados: Metadados
     conteudo_adaptado: ConteudoAdaptado
 
+INSTRUCOES_FORMATO = {
+    "Flashcards": "Cada item é um flashcard: pergunta curta e resposta direta.",
+    "Quiz": "Cada item é uma questão de múltipla escolha: coloque a pergunta e as alternativas A, B, C e D em topico_ou_pergunta, e a letra correta com uma justificativa curta em explicacao_ou_resposta.",
+    "Tutorial Passo a Passo": "Cada item é um passo numerado: o título do passo em topico_ou_pergunta e como executá-lo em explicacao_ou_resposta.",
+    "Resumo Executivo": "Cada item é um ponto-chave: o tema em topico_ou_pergunta e uma explicação objetiva em explicacao_ou_resposta.",
+}
+
 
 def criar_chain_json():
     parser = JsonOutputParser(pydantic_object=SaidaLLM)
@@ -68,6 +76,7 @@ def criar_chain_json():
          "Você é um especialista em educação técnica. Adapte o conteúdo ao perfil, "
          "ao formato e ao nicho pedidos. Escreva em português. "
          "Responda APENAS com JSON válido, sem markdown e sem texto extra.\n\n"
+         "Regra do formato: {instrucao_formato}\n\n"
          "{format_instructions}"),
         ("human",
          "Perfil: {perfil}\nFormato: {formato}\nNicho: {nicho}\n"
@@ -75,18 +84,40 @@ def criar_chain_json():
     ]).partial(format_instructions=parser.get_format_instructions())
     return prompt | get_llm() | parser
 
-# TODO: gerar_conteudo
+# gerar_conteudo
+def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
+                   contexto: str | None = None) -> dict:
+   
+    if contexto is None:
+        contexto = "(contexto do documento ainda não integrado ao RAG)"
 
+    try:
+        bruto = criar_chain_json().invoke({
+            "perfil": perfil,
+            "formato": formato,
+            "nicho": nicho,
+            "nome_ficheiro": nome_ficheiro,
+            "contexto": contexto,
+            "instrucao_formato": INSTRUCOES_FORMATO.get(formato, "Organize em itens claros."),
+        })
+        saida = SaidaLLM.model_validate(bruto)  
+    except (OutputParserException, ValidationError) as e:
+        return {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"}
+    except Exception as e:  
+        return {"status": "erro", "mensagem": f"Falha ao chamar o modelo: {e}"}
+
+    resultado = {"status": "sucesso", **saida.model_dump()}
+    resultado["metadados"]["perfil_aplicado"] = perfil
+    resultado["metadados"]["formato_gerado"] = formato
+    return resultado
 
 # Teste da tarefa 3
 if __name__ == "__main__":
-    chain = criar_chain_json()
-    resultado = chain.invoke({
-        "perfil": "Iniciante",
-        "formato": "Flashcards",
-        "nicho": "Geral",
-        "nome_ficheiro": "teste.pdf",
-        "contexto": "RAG é uma técnica que combina busca em uma base de documentos "
-                    "com um modelo de linguagem para gerar respostas mais confiáveis.",
-    })
+    resultado = gerar_conteudo(
+        "teste.pdf", "Iniciante", "Flashcards", "Geral",
+        contexto="RAG combina busca em documentos com um modelo de linguagem "
+                 "para gerar respostas mais confiáveis.",
+    )
     print(json.dumps(resultado, indent=2, ensure_ascii=False))
+
+
