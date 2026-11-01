@@ -1,72 +1,34 @@
-# Guia de Configuração do Ambiente Local (OCI Object Storage Emulator)
+# Infraestrutura de Armazenamento (OCI Object Storage)
 
-Execute os comandos abaixo no terminal a partir da raiz do seu projeto para configurar o ambiente e rodar os testes.
-
----
-
-## 1. Subir o Emulador Local
-
-```bash
-docker compose -f infra/docker-compose.yml up -d
-```
+Este diretório contém os manuais de configuração necessários para estabelecer a comunicação do backend do **NovaMente** com o serviço de Object Storage da Oracle Cloud Infrastructure, suportando tanto o desenvolvimento isolado quanto a homologação em nuvem.
 
 ---
 
-## 2. Configurar as Credenciais Fictícias da OCI (Passo a Passo)
+## Visão Geral da Infraestrutura
 
-O SDK da OCI exige uma estrutura de arquivos de configuração e chaves válidas na máquina local, mesmo utilizando um emulador. Siga os passos abaixo para criar essa estrutura:
+O módulo de persistência (`src/storage.py`) foi projetado para funcionar de forma híbrida e transparente. Através das variáveis de ambiente contidas no arquivo `.env`, o SDK da OCI sabe se deve redirecionar as chamadas de API para um container Docker local ou para os servidores reais da Oracle Cloud.
 
-**Passo 2.1:** Crie a pasta oculta `.oci` no diretório home do seu usuário:
-```bash
-mkdir -p ~/.oci
-```
+Os guias detalhados de configuração estão divididos em dois cenários e localizados na pasta `docs/`:
 
-**Passo 2.2:** Gere uma chave privada RSA válida no formato PEM exigido pelo SDK dentro dessa pasta:
-```bash
-openssl genrsa -out ~/.oci/oci_api_key.pem 2000
-```
-
-**Passo 2.3:** Crie e abra o arquivo de configuração no editor do terminal:
-```bash
-nano ~/.oci/config
-```
-
-**Passo 2.4:** Copie o bloco de texto abaixo, cole dentro do editor de texto que se abriu no terminal e salve o arquivo (no Nano, aperte `Ctrl + O` seguido de `Enter` para salvar, e `Ctrl + X` para sair):
-```ini
-[DEFAULT]
-user=ocid1.user.oc1..ficticio
-fingerprint=00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
-key_file=~/.oci/oci_api_key.pem
-tenancy=ocid1.tenancy.oc1..ficticio
-region=us-ashburn-1
-```
+*   [docs/LOCAL_GUIDE.md](./docs/LOCAL_GUIDE.md): Manual focado na emulação local do Object Storage via Docker Compose. Ideal para desenvolvimento offline, novos integrantes da equipe ou testes rápidos sem consumo de recursos externos.
+*   [docs/REMOTE_MANUAL_GUIDE.md](./docs/REMOTE_MANUAL_GUIDE.md): Manual focado no provisionamento manual do bucket gratuito (Always Free) diretamente no console web da OCI e na geração das chaves de API reais de acesso.
 
 ---
 
-## 3. Configurar o Arquivo de Ambiente (.env)
+## Arquivos de Configuração Envolvidos
 
-Adicione estas variáveis ao seu arquivo `.env` na raiz do projeto:
+Para garantir o funcionamento correto de qualquer um dos ambientes escolhidos, o desenvolvedor deve se atentar aos seguintes pontos de ancoragem locais:
 
-```env
-OCI_ENDPOINT="http://localhost:12000"
-OCI_NAMESPACE="namespace_ficticio"
-BUCKET_NAME="seu_bucket_de_testes"
-OCI_CONFIG_FILE="~/.oci/config"
-OCI_PROFILE="DEFAULT"
-```
+1.  **Pasta `~/.oci/`**: Diretório oculto na raiz do usuário do sistema operacional que armazena as chaves RSA (`oci_api_key.pem`) e as assinaturas de requisição do SDK.
+2.  **Arquivo `~/.oci/config`**: Arquivo de mapeamento contendo os identificadores exclusivos (OCIDs), região padrão e o caminho local da chave privada.
+3.  **Arquivo `.env`**: Arquivo na raiz do projeto que dita o comportamento dinâmico do código por meio de propriedades como `BUCKET_NAME` e `OCI_ENDPOINT`.
 
 ---
 
-## 4. Executar os Testes
+## Validação do Módulo de Storage
+
+Independentemente de estar rodando o emulador local ou a nuvem real da OCI, o comportamento das funções de upload, listagem e download integradas pode ser validado imediatamente executando o conjunto de testes unitários:
 
 ```bash
 python3 -m unittest src/test_storage.py
-```
-
----
-
-## 5. Derrubar o Ambiente
-
-```bash
-docker compose -f infra/docker-compose.yml down
 ```
