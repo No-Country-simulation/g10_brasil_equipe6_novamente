@@ -1,6 +1,26 @@
+# Core
+python-dotenv
+
+# Oracle Cloud Infrastructure
 oci
+
+# LangChain
 langchain
+langchain-core
 langchain-google-genai
 langchain-ollama
-langchain-core
-python-dotenv
+
+# RAG - Document Processing
+pypdf
+langchain-text-splitters
+
+# RAG - Embeddings
+langchain-huggingface
+sentence-transformers
+
+# RAG - Vector Database
+langchain-chroma
+chromadb
+
+# Development & Testing
+pytest

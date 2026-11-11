@@ -4,3 +4,19 @@ __pycache__/**
 *.pyc
 .venv/
 venv/
+
+
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Local vector database
+.data/chroma/
+
+# Environment variables
+.env
+.env.*
+!.env.example
