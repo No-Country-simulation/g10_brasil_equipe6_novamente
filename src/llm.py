@@ -11,8 +11,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
+# --- INCLUSÃO: Importando a função do Moab ---
+from src.rag import recuperar_contexto 
 
 load_dotenv()  
+
 
 def get_llm(temperature: float = 0.3) -> ChatGoogleGenerativeAI | ChatOllama:
     # Permite usar um modelo local sem alterar o fluxo padrão com Gemini.
@@ -89,7 +92,11 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
                    contexto: str | None = None) -> dict:
    
     if contexto is None:
-        contexto = "(contexto do documento ainda não integrado ao RAG)"
+        # --- INCLUSÃO: Integração Real com o RAG ---
+        query_busca = f"Principais conceitos sobre {nicho} adequados para o perfil {perfil}"
+        contexto_extraido = recuperar_contexto(query=query_busca, nome_arquivo=nome_ficheiro)
+        contexto = contexto_extraido if contexto_extraido.strip() else "Informação não encontrada no documento."
+        # -------------------------------------------
 
     try:
         bruto = criar_chain_json().invoke({
@@ -119,5 +126,3 @@ if __name__ == "__main__":
                  "para gerar respostas mais confiáveis.",
     )
     print(json.dumps(resultado, indent=2, ensure_ascii=False))
-
-
