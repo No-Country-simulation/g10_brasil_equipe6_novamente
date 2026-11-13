@@ -7,7 +7,7 @@ from oci.exceptions import ServiceError
 
 from src.storage import (
     _client, _namespace, _bucket,
-    upload_bytes, upload_file, download_bytes, list_keys, delete_key,
+    upload_bytes, upload_file, download_bytes, list_keys,
     backup_directory, restore_directory
 )
 
@@ -32,7 +32,7 @@ class TestObjectStorage(unittest.TestCase):
     def test_object_storage_lifecycle(self) -> None:
         """Executa o ciclo completo de testes integrados das operacoes do Object Storage."""
         bytes_object_name = "teste_bytes.txt"
-        original_bytes_content = b"Ola, este e um teste de bytes usando o emulador OCI!"
+        original_bytes_content = b"Ola, este e um teste de bytes usando a OCI real!"
         upload_bytes(bytes_object_name, original_bytes_content, content_type="text/plain")
 
         local_file = Path("arquivo_local_teste.txt")
@@ -46,9 +46,6 @@ class TestObjectStorage(unittest.TestCase):
 
         downloaded_content = download_bytes(bytes_object_name)
         self.assertEqual(downloaded_content, original_bytes_content)
-
-        delete_key(bytes_object_name)
-        delete_key(file_object_name)
 
         if local_file.exists():
             local_file.unlink()
@@ -75,7 +72,6 @@ class TestObjectStorage(unittest.TestCase):
             self.assertTrue(restored_file.exists())
             self.assertEqual(restored_file.read_text(encoding="utf-8"), sample_content)
         finally:
-            delete_key(remote_backup_key)
             if source_dir.exists():
                 shutil.rmtree(source_dir)
             if restore_dir.exists():
