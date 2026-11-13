@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Instala requirements.txt e o streamlit - Depois removo o streamlit
 RUN pip install --no-cache-dir -r requirements.txt streamlit
 
 
@@ -26,7 +25,7 @@ WORKDIR /app
 
 COPY --from=builder /usr/local /usr/local
 
-# Copia os arquivos como estão na árvore do repositório
+# Copia os arquivos como estão na árvore atual do repositório
 COPY app.py .
 COPY requirements.txt .
 COPY Contrato_interno.md .
@@ -34,6 +33,9 @@ COPY README.md .
 COPY src/ ./src/
 COPY infra/ ./infra/
 COPY prompts_e_testes/ ./prompts_e_testes/
+COPY documents/ ./documents/
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
 
 EXPOSE 8501
 

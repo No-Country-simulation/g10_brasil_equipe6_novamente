@@ -1,10 +1,14 @@
 """Object Storage da OCI (somente funções, via oci-sdk)."""
 import mimetypes
 import os
+import shutil
 from functools import lru_cache
 from pathlib import Path
 
 import oci
+
+DEFAULT_CHROMA_DIR = ".data/chroma"
+DEFAULT_BACKUP_KEY = "backups/chroma_db.zip"
 
 
 @lru_cache(maxsize=1)
@@ -21,7 +25,6 @@ def _client() -> oci.object_storage.ObjectStorageClient:
     endpoint = os.getenv("OCI_ENDPOINT")
 
     return oci.object_storage.ObjectStorageClient(config, service_endpoint=endpoint)
-
 
 
 @lru_cache(maxsize=1)
@@ -68,3 +71,40 @@ def list_keys(prefix: str = "") -> list[str]:
 def delete_key(key: str) -> None:
     """Remove um objeto do bucket a partir de sua chave."""
     _client().delete_object(_namespace(), _bucket(), key)
+
+
+def backup_directory(
+    dir_path: str | Path | None = None,
+    remote_key: str = DEFAULT_BACKUP_KEY,
+) -> str:
+    """Compacta o diretório local do ChromaDB em .zip e envia para o bucket da OCI."""
+    target_dir = Path(
+        dir_path or os.getenv("CHROMA_PERSIST_DIRECTORY", DEFAULT_CHROMA_DIR)
+    )
+    if not target_dir.exists():
+        raise FileNotFoundError(f"Diretório não encontrado: {target_dir}")
+
+    zip_path = Path(shutil.make_archive("temp_dir_backup", "zip", root_dir=target_dir))
+    try:
+        return upload_file(zip_path, key=remote_key)
+    finally:
+        if zip_path.exists():
+            zip_path.unlink()
+
+
+def restore_directory(
+    remote_key: str = DEFAULT_BACKUP_KEY,
+    extract_dir: str | Path | None = None,
+) -> None:
+    """Baixa um arquivo .zip do bucket da OCI e extrai no diretório local do ChromaDB."""
+    target_dir = Path(
+        extract_dir or os.getenv("CHROMA_PERSIST_DIRECTORY", DEFAULT_CHROMA_DIR)
+    )
+    temp_zip = Path("temp_dir_restore.zip")
+    try:
+        temp_zip.write_bytes(download_bytes(remote_key))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        shutil.unpack_archive(str(temp_zip), extract_dir=str(target_dir), format="zip")
+    finally:
+        if temp_zip.exists():
+            temp_zip.unlink()
