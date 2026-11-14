@@ -30,11 +30,7 @@ WORKDIR /app
 
 COPY --from=builder /usr/local /usr/local
 
-<<<<<<< HEAD
-# Copia os arquivos como estão na árvore do repositório
-=======
-# Copia os arquivos como estão na árvore atual do repositório
->>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
+# Copia os arquivos como estao na arvore do repositorio
 COPY app.py .
 COPY requirements.txt .
 COPY Contrato_interno.md .
@@ -42,12 +38,6 @@ COPY README.md .
 COPY src/ ./src/
 COPY infra/ ./infra/
 COPY prompts_e_testes/ ./prompts_e_testes/
-<<<<<<< HEAD
-
-EXPOSE 8501
-
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
-=======
 COPY documents/ ./documents/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
@@ -55,4 +45,3 @@ COPY tests/ ./tests/
 EXPOSE 8501
 
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
->>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
