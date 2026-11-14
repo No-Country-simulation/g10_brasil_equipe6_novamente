@@ -18,16 +18,18 @@ load_dotenv()
  
  
 def get_llm(temperature: float = 0.3) -> ChatGoogleGenerativeAI | ChatOllama:
-    # Permite usar um modelo local sem alterar o fluxo padrão com Gemini.
+    # Lê a flag do ambiente (que o Streamlit vai injetar)
     if os.getenv("USE_LOCAL_LLM", "False") == "True":
-        return ChatOllama(model="qwen2.5:7b-instruct", temperature=temperature)
+        # Lê o nome do modelo dinamicamente
+        modelo_local = os.getenv("OLLAMA_MODEL", "llama3.1")
+        return ChatOllama(model=modelo_local, temperature=temperature)
  
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY não encontrada. Configure no arquivo .env")
  
     return ChatGoogleGenerativeAI(
-        model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+        model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"), # Sugestão: muda para o 1.5 aqui para evitar falhas de cota
         google_api_key=api_key,
         temperature=temperature,
         max_retries=3,
