@@ -12,8 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
+<<<<<<< HEAD
 # Instala via requirements.txt de forma isolada
 RUN pip install --no-cache-dir -r requirements.txt
+=======
+RUN pip install --no-cache-dir -r requirements.txt streamlit
+>>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
 
 
 # Camada 2: Runtime (Execução Final)
@@ -26,7 +30,11 @@ WORKDIR /app
 
 COPY --from=builder /usr/local /usr/local
 
+<<<<<<< HEAD
 # Copia os arquivos como estão na árvore do repositório
+=======
+# Copia os arquivos como estão na árvore atual do repositório
+>>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
 COPY app.py .
 COPY requirements.txt .
 COPY Contrato_interno.md .
@@ -34,7 +42,17 @@ COPY README.md .
 COPY src/ ./src/
 COPY infra/ ./infra/
 COPY prompts_e_testes/ ./prompts_e_testes/
+<<<<<<< HEAD
 
 EXPOSE 8501
 
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+=======
+COPY documents/ ./documents/
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+>>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
