@@ -12,12 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-<<<<<<< HEAD
 # Instala via requirements.txt de forma isolada
 RUN pip install --no-cache-dir -r requirements.txt
-=======
-RUN pip install --no-cache-dir -r requirements.txt streamlit
->>>>>>> db6939737c0b7fe026b55b1f0bf9884b62bea8c3
 
 
 # Camada 2: Runtime (Execução Final)
