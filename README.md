@@ -72,7 +72,7 @@ novamente-mvp/
 ├── Dockerfile             # Script de conteinerização para deploy na OCI.
 ├── README.md              # Documentação oficial do projeto.
 ├── src/                   # Motor do Backend
-│   ├── rag.py             # Pipeline de ingestão, chunking e ChromaDB.
+│   ├── rag/               # Pipeline de ingestão, chunking, ChromaDB e Facade de busca.
 │   ├── llm.py             # Orquestração de chains LangChain e conexão com Gemini.
 │   └── storage.py         # Integração com OCI SDK (Object Storage).
 └── prompts_e_testes/      # Validação de prompts e exemplos de JSON estruturado.

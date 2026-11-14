@@ -1,8 +1,7 @@
-"""Script de testes para validacao das funcoes do OCI Object Storage via emulador."""
+"""Script de testes para validacao das funcoes do OCI Object Storage na nuvem real."""
 import unittest
 from pathlib import Path
 from dotenv import load_dotenv
-from oci.object_storage.models import CreateBucketDetails
 from oci.exceptions import ServiceError
 
 from src.storage import (
@@ -18,13 +17,12 @@ class TestObjectStorage(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Garante a infraestrutura inicial criando o bucket necessario dentro do emulador local."""
+        """Garante a infraestrutura inicial verificando se o bucket existe na OCI."""
         client = _client()
         namespace = _namespace()
         bucket_name = _bucket()
         try:
-            details = CreateBucketDetails(name=bucket_name, compartment_id=namespace)
-            client.create_bucket(namespace, details)
+            client.get_bucket(namespace, bucket_name)
         except ServiceError as e:
             if e.status != 409 and "BucketAlreadyExists" not in str(e):
                 raise e
@@ -47,15 +45,9 @@ class TestObjectStorage(unittest.TestCase):
         downloaded_content = download_bytes(bytes_object_name)
         self.assertEqual(downloaded_content, original_bytes_content)
 
+        # --- Limpeza (Evita vazamento de recursos na OCI) ---
         delete_key(bytes_object_name)
         delete_key(file_object_name)
-
-        final_keys = list_keys()
-        self.assertEqual(len(final_keys), 0)
-
+        
         if local_file.exists():
-            local_file.unlink()
-
-
-if __name__ == "__main__":
-    unittest.main()
+            local_file.unlink() # Apaga o arquivo físico de texto criado no teste local
