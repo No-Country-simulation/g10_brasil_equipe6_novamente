@@ -5,26 +5,62 @@ import shutil
 from functools import lru_cache
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from dotenv import load_dotenv
 import oci
+
+load_dotenv()
 
 DEFAULT_CHROMA_DIR = ".data/chroma"
 DEFAULT_BACKUP_KEY = "backups/chroma_db.zip"
+DEFAULT_TIMEOUT = (3.0, 10.0)
+
+
+def _emulator_fallback_config() -> dict[str, str]:
+    """Gera configuração mínima em memória para uso com o emulador local da OCI."""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return {
+        "user": "ocid1.user.oc1..emulator",
+        "fingerprint": "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff",
+        "tenancy": "ocid1.tenancy.oc1..emulator",
+        "region": "sa-saopaulo-1",
+        "key_content": pem_bytes.decode("utf-8"),
+    }
 
 
 @lru_cache(maxsize=1)
 def _client() -> oci.object_storage.ObjectStorageClient:
     """Retorna o cliente autenticado do Object Storage."""
-    config = oci.config.from_file(
-        file_location=os.getenv("OCI_CONFIG_FILE", "~/.oci/config"),
-        profile_name=os.getenv("OCI_PROFILE", "DEFAULT"),
-    )
-    oci.config.validate_config(config)
-
-    # Se a variável OCI_ENDPOINT estiver definida (ex: http://localhost:12000),
-    # o SDK usará o emulador em vez da nuvem real.
     endpoint = os.getenv("OCI_ENDPOINT")
+    config_path = Path(os.getenv("OCI_CONFIG_FILE", "~/.oci/config")).expanduser()
 
-    return oci.object_storage.ObjectStorageClient(config, service_endpoint=endpoint)
+    if config_path.exists():
+        config = oci.config.from_file(
+            file_location=str(config_path),
+            profile_name=os.getenv("OCI_PROFILE", "DEFAULT"),
+        )
+        oci.config.validate_config(config)
+    elif endpoint:
+        config = _emulator_fallback_config()
+    else:
+        config = oci.config.from_file(
+            file_location=str(config_path),
+            profile_name=os.getenv("OCI_PROFILE", "DEFAULT"),
+        )
+        oci.config.validate_config(config)
+
+    return oci.object_storage.ObjectStorageClient(
+        config,
+        service_endpoint=endpoint,
+        timeout=DEFAULT_TIMEOUT,
+        retry_strategy=oci.retry.NoneRetryStrategy(),
+    )
 
 
 @lru_cache(maxsize=1)
