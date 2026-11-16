@@ -7,7 +7,7 @@ import streamlit as st
 # Integração Real: Substituindo o mock pelas funções do backend da equipa
 from src.rag import processar_e_indexar_documento
 from src.llm import gerar_conteudo
-from src.storage import upload_bytes
+from src.storage import backup_directory, upload_bytes
 
 
 @st.cache_data(ttl=60)
@@ -97,20 +97,9 @@ if submit:
                 )
             
             if resposta.get("status") == "sucesso":
-                st.toast('Conteúdo adaptado com sucesso!', icon='🎉')
-                
                 dados = resposta['conteudo_adaptado']
                 meta = resposta['metadados']
 
-                try:
-                    json_bytes = json.dumps(resposta, ensure_ascii=False, indent=2).encode('utf-8')
-                    nome_obj_nuvem = f"evidencia_{perfil.replace(' ', '')}_{formato.replace(' ', '')}.json"
-                    
-                    upload_bytes(nome_obj_nuvem, json_bytes, content_type="application/json")
-                    st.toast(f'Evidência guardada no OCI: {nome_obj_nuvem}', icon='☁️')
-                except Exception as e:
-                    st.warning(f"O conteúdo foi gerado, mas falhou ao guardar no Oracle Cloud: {e}")
-                
                 st.divider()
                 st.markdown(f"### 🎯 {dados['titulo']}")
                 st.info(f"**Tempo estimado:** {meta['tempo_estimado_estudo_minutos']} min | **Conceitos:** {', '.join(meta['conceitos_chave'])}")
@@ -120,6 +109,19 @@ if submit:
                 for i, item in enumerate(dados['itens'], 1):
                     with st.expander(f"{i}. {item['topico_ou_pergunta']}"):
                         st.write(item['explicacao_ou_resposta'])
+
+                st.toast('Conteúdo adaptado com sucesso!', icon='🎉')
+
+                try:
+                    with st.spinner("A guardar evidência e backup no Oracle Cloud (OCI)..."):
+                        json_bytes = json.dumps(resposta, ensure_ascii=False, indent=2).encode('utf-8')
+                        nome_obj_nuvem = f"evidencia_{perfil.replace(' ', '')}_{formato.replace(' ', '')}.json"
+                        
+                        upload_bytes(nome_obj_nuvem, json_bytes, content_type="application/json")
+                        backup_directory()
+                    st.toast(f'Evidência guardada no OCI: {nome_obj_nuvem}', icon='☁️')
+                except Exception as e:
+                    st.warning(f"O conteúdo foi gerado, mas falhou ao guardar no Oracle Cloud: {e}")
                         
             else:
                 msg_erro = str(resposta.get('mensagem', ''))
