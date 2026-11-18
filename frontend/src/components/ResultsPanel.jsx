@@ -1,66 +1,39 @@
 
 import { useState } from "react";
 
-const mockResult = {
-  titulo: "Introdução à Inteligência Artificial",
-  introducao:
-    "A inteligência artificial permite que sistemas computacionais realizem tarefas que normalmente exigiriam inteligência humana. Vamos explorar os principais conceitos de maneira simples e prática.",
-  conceitos: [
-    "Aprendizado de Máquina",
-    "Redes Neurais",
-    "Processamento de Linguagem Natural",
-    "Inteligência Artificial Generativa",
-  ],
-  itens: [
-    {
-      pergunta: "O que é Inteligência Artificial?",
-      resposta:
-        "É uma área da computação que desenvolve sistemas capazes de reconhecer padrões, interpretar informações e tomar decisões.",
-    },
-    {
-      pergunta: "O que é Aprendizado de Máquina?",
-      resposta:
-        "É uma técnica que permite aos sistemas aprender padrões a partir de dados, melhorando seu desempenho.",
-    },
-    {
-      pergunta: "O que são Redes Neurais?",
-      resposta:
-        "São modelos computacionais inspirados no funcionamento do cérebro humano, utilizados para identificar padrões.",
-    },
-  ],
-};
-
 function ResultsPanel({ parameters = {}, resultData }) {
   const [copied, setCopied] = useState(false);
 
-  const isDemo = !resultData?.conteudo_adaptado;
+  const adaptedContent = resultData?.conteudo_adaptado;
+  const metadata = resultData?.metadados ?? {};
 
-  const content = isDemo
-    ? mockResult
-    : {
-        titulo: resultData.conteudo_adaptado.titulo,
-        introducao:
-          resultData.conteudo_adaptado.introducao_contextualizada,
-        conceitos: resultData.metadados?.conceitos_chave ?? [],
-        itens: (resultData.conteudo_adaptado.itens ?? []).map((item) => ({
-          pergunta: item.topico_ou_pergunta,
-          resposta: item.explicacao_ou_resposta,
-        })),
-      };
+  const content = {
+    titulo: adaptedContent?.titulo ?? "Conteúdo adaptado",
+    introducao:
+      adaptedContent?.introducao_contextualizada ??
+      "Não foi fornecida uma introdução para este conteúdo.",
+    conceitos: Array.isArray(metadata.conceitos_chave)
+      ? metadata.conceitos_chave
+      : [],
+    itens: Array.isArray(adaptedContent?.itens)
+      ? adaptedContent.itens.map((item) => ({
+          pergunta: item.topico_ou_pergunta ?? "Tópico",
+          resposta:
+            item.explicacao_ou_resposta ?? "Sem explicação disponível.",
+        }))
+      : [],
+  };
 
-  const format = isDemo
-    ? parameters.format
-    : resultData.metadados?.formato_gerado ?? parameters.format;
+  const format =
+    metadata.formato_gerado ?? parameters.format ?? "Flashcards";
 
-  const profile = isDemo
-    ? parameters.profile
-    : resultData.metadados?.perfil_aplicado ?? parameters.profile;
+  const profile =
+    metadata.perfil_aplicado ?? parameters.profile ?? "Não informado";
 
   const niche = parameters.niche ?? "Geral";
 
-  const studyTime = isDemo
-    ? 15
-    : resultData.metadados?.tempo_estimado_estudo_minutos ?? 0;
+  const studyTime =
+    metadata.tempo_estimado_estudo_minutos ?? 0;
 
   const handleCopy = async () => {
     const text = [
@@ -69,6 +42,8 @@ function ResultsPanel({ parameters = {}, resultData }) {
       `Nicho: ${niche}`,
       `Formato: ${format}`,
       content.introducao,
+      "Conceitos-chave:",
+      ...content.conceitos,
       ...content.itens.map(
         (item) => `${item.pergunta}\n${item.resposta}`
       ),
@@ -99,9 +74,11 @@ function ResultsPanel({ parameters = {}, resultData }) {
               <span className="text-xs font-semibold text-purple-400">
                 CARTÃO {index + 1}
               </span>
+
               <h4 className="mt-3 font-semibold text-white">
                 {item.pergunta}
               </h4>
+
               <p className="mt-3 text-sm leading-7 text-zinc-300">
                 {item.resposta}
               </p>
@@ -126,10 +103,12 @@ function ResultsPanel({ parameters = {}, resultData }) {
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-600/20 font-bold text-purple-300">
                 {index + 1}
               </div>
+
               <div>
                 <h4 className="font-semibold text-white">
                   {item.pergunta}
                 </h4>
+
                 <p className="mt-2 text-sm leading-7 text-zinc-300">
                   {item.resposta}
                 </p>
@@ -155,13 +134,16 @@ function ResultsPanel({ parameters = {}, resultData }) {
               <span className="text-xs font-semibold text-purple-400">
                 PERGUNTA {index + 1}
               </span>
+
               <h4 className="mt-3 font-semibold text-white">
                 {item.pergunta}
               </h4>
+
               <div className="mt-4 rounded-lg bg-purple-500/10 p-4">
                 <p className="text-xs font-semibold text-purple-300">
                   RESPOSTA / EXPLICAÇÃO
                 </p>
+
                 <p className="mt-2 text-sm leading-7 text-zinc-300">
                   {item.resposta}
                 </p>
@@ -196,6 +178,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
                 <p className="font-medium text-white">
                   {item.pergunta}
                 </p>
+
                 <p className="mt-1 text-sm leading-6 text-zinc-400">
                   {item.resposta}
                 </p>
@@ -219,6 +202,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
         <div>
           <div className="mb-2 flex items-center gap-2">
             <span className="text-xl">✨</span>
+
             <span className="text-sm font-semibold text-purple-400">
               CONTEÚDO ADAPTADO
             </span>
@@ -233,8 +217,8 @@ function ResultsPanel({ parameters = {}, resultData }) {
           </p>
         </div>
 
-        <span className="w-fit rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-300">
-          {isDemo ? "Demonstração" : "Resultado da IA"}
+        <span className="w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
+          Resultado da IA
         </span>
       </div>
 
@@ -261,6 +245,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
         <h3 className="text-lg font-semibold text-white">
           Sobre este conteúdo
         </h3>
+
         <p className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 text-sm leading-7 text-zinc-300">
           {content.introducao}
         </p>
@@ -270,6 +255,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
         <h3 className="text-lg font-semibold text-white">
           Conceitos-chave
         </h3>
+
         <div className="flex flex-wrap gap-2">
           {content.conceitos.map((concept, index) => (
             <span

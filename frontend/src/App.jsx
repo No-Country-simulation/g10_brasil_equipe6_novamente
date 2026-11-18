@@ -4,10 +4,14 @@ import UploadDocument from "./components/UploadDocument";
 import ParametersPanel from "./components/ParametersPanel";
 import ResultsPanel from "./components/ResultsPanel";
 
+const API_URL = "http://localhost:8000/api/adaptar";
+
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
+  const [resultData, setResultData] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const [parameters, setParameters] = useState({
     engine: "Nuvem",
@@ -100,43 +104,81 @@ function App() {
         !ollamaError &&
         parameters.localModel.length > 0);
 
-  const handleGenerate = () => {
+  // Envia o documento e os parâmetros para a API Python
+  const handleGenerate = async () => {
     if (!canGenerate) return;
 
-    // Payload seguindo o contrato combinado com o backend
-    const payload = {
-      perfil: parameters.profile,
-      formato: parameters.format,
-      nicho: parameters.niche,
-      motor:
-        parameters.engine === "Nuvem"
-          ? "Nuvem (Google Gemini)"
-          : "Local (Ollama)",
-      modelo_local:
-        parameters.engine === "Local"
-          ? parameters.localModel
-          : "",
-      apiKey:
-        parameters.engine === "Nuvem"
-          ? parameters.apiKey
-          : "",
-      file: selectedFile,
-    };
-
-    // Não exibe a chave completa no console
-    console.log("Payload preparado:", {
-      ...payload,
-      apiKey: payload.apiKey ? "[informada]" : "",
-    });
-
-    // Simulação temporária até a integração com o backend
     setIsGenerating(true);
     setShowResults(false);
+    setResultData(null);
+    setApiError("");
 
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      const formData = new FormData();
+
+      formData.append("perfil", parameters.profile);
+      formData.append("formato", parameters.format);
+      formData.append("nicho", parameters.niche);
+
+      formData.append(
+        "motor",
+        parameters.engine === "Nuvem"
+          ? "Nuvem (Google Gemini)"
+          : "Local (Ollama)"
+      );
+
+      formData.append(
+        "modelo_local",
+        parameters.engine === "Local"
+          ? parameters.localModel
+          : ""
+      );
+
+      formData.append(
+        "apiKey",
+        parameters.engine === "Nuvem"
+          ? parameters.apiKey
+          : ""
+      );
+
+      formData.append("file", selectedFile);
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const detail = data?.detail;
+
+        throw new Error(
+          typeof detail === "string"
+            ? detail
+            : "O servidor não conseguiu processar o documento."
+        );
+      }
+
+      if (!data?.conteudo_adaptado) {
+        throw new Error(
+          "A resposta da API não contém o conteúdo adaptado esperado."
+        );
+      }
+
+      setResultData(data);
       setShowResults(true);
-    }, 1200);
+    } catch (error) {
+      console.error("Erro ao gerar conteúdo:", error);
+
+      setApiError(
+        error.message === "Failed to fetch"
+          ? "Não foi possível conectar ao servidor. Verifique se o backend Python está em execução."
+          : error.message
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -182,7 +224,7 @@ function App() {
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-lg shadow-purple-900/20 transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
           >
             {isGenerating
-              ? "Preparando seu material..."
+              ? "Gerando seu material..."
               : "✨ Gerar conteúdo educacional"}
           </button>
 
@@ -207,8 +249,17 @@ function App() {
             )}
         </div>
 
-        {showResults && (
-          <ResultsPanel parameters={parameters} />
+        {apiError && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+            {apiError}
+          </div>
+        )}
+
+        {showResults && resultData && (
+          <ResultsPanel
+            parameters={parameters}
+            resultData={resultData}
+          />
         )}
 
         <footer className="border-t border-zinc-800 pt-6 text-center text-xs text-zinc-500">
