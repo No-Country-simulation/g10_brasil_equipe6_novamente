@@ -27,7 +27,7 @@ WORKDIR /app
 COPY --from=builder /usr/local /usr/local
 
 # Copia os arquivos como estao na arvore do repositorio
-COPY app.py .
+COPY api.py .
 COPY requirements.txt .
 COPY Contrato_interno.md .
 COPY README.md .
@@ -38,6 +38,6 @@ COPY documents/ ./documents/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
 
-EXPOSE 8501
+EXPOSE 8000
 
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

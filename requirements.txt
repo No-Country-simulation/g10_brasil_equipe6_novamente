@@ -22,6 +22,10 @@ sentence-transformers
 langchain-chroma
 chromadb
 
+# API & Web Server
+fastapi
+uvicorn
+python-multipart
+
 # Development & Testing
 pytest
-streamlit

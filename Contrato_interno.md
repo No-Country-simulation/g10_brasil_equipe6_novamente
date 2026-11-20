@@ -1,23 +1,34 @@
-# 🤝 Contrato de Integração (Frontend <-> Backend)
+# 🤝 Contrato de Integração (Frontend React <-> Backend FastAPI)
 
-Para que todos possam programar em paralelo sem que o código quebre na hora da integração, precisamos decidir o formato de comunicação entre a Interface (Streamlit) e o Motor IA (RAG/Gemini). 
-
-Vamos focar na seguinte opção arquiteturial.
+A comunicação entre a interface web em React (`frontend/`) e o motor de IA em Python (`api.py` + `src/`) é feita via API REST HTTP (`multipart/form-data`).
 
 ---
 
-O Streamlit importa os arquivos do backend como módulos Python comuns. Tudo roda no mesmo servidor e na mesma porta.
-* **Vantagem:** Zero complexidade de rede, super rápido de implementar, sem erros de conexão.
-* **Desvantagem:** O backend e a interface rodam acoplados.
+## 1. Endpoint da API (`api.py`)
 
-**Contrato Esperado:**
-O Streamlit fará a chamada exata assim no `app.py`:
+- **Método e Rota:** `POST http://localhost:8000/api/adaptar`
+- **Campos do `FormData` enviados pelo React:**
+  - `file`: Arquivo original (`.pdf`, `.md`, `.txt`)
+  - `perfil`: `"Iniciante"` | `"Dev Júnior / Pleno"` | `"Líder Técnico / Arquiteto"` | `"Gestor / Executivo"`
+  - `formato`: `"Flashcards"` | `"Tutorial Passo a Passo"` | `"Quiz"` | `"Resumo Executivo"`
+  - `nicho`: `"Geral"` | `"Fintech"` | `"Saúde"` | `"E-commerce"`
+  - `motor`: `"Nuvem (Google Gemini)"` | `"Local (Ollama)"`
+  - `modelo_local`: Nome do modelo local no Ollama (ex.: `"llama3.1:8b"`)
+  - `apiKey`: Chave da API do Google Gemini quando o motor for em nuvem
+
+---
+
+## 2. Orquestração Interna no Backend Python
+
+O `api.py` importa e aciona os módulos internos do pacote `src/`:
+
 ```python
-from src.rag import processar_documento
+from src.rag import processar_e_indexar_documento
 from src.llm import gerar_conteudo
 
-# 1. Moab recebe o arquivo diretamente do Streamlit
-sucesso = processar_documento(arquivo_bytes, "nome_do_arquivo.pdf")
+# 1. Indexa o documento enviado no ChromaDB
+sucesso = processar_e_indexar_documento(arquivo_bytes, "nome_do_arquivo.pdf")
 
-# 2. Letícia recebe os parâmetros textuais
+# 2. Recupera o contexto semântico e gera o conteúdo adaptado via Gemini ou Ollama
 resultado_json = gerar_conteudo("nome_do_arquivo.pdf", "Iniciante", "Flashcards", "Geral")
+```

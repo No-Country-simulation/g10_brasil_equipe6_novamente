@@ -3,8 +3,8 @@ from src.rag.pipeline import RAGPipeline
 
 def processar_e_indexar_documento(arquivo_bytes: bytes, nome_arquivo: str) -> bool:
     """
-    Adapter (Facade) que respeita o contrato do Streamlit, 
-    conectando a interface à arquitetura orientada a objetos.
+    Adapter (Facade) que respeita o contrato da API,
+    conectando o endpoint FastAPI à arquitetura orientada a objetos do RAG.
     """
     try:
         pipeline = RAGPipeline()

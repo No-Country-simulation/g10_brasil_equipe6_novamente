@@ -75,11 +75,11 @@ function ResultsPanel({ parameters = {}, resultData }) {
                 CARTÃO {index + 1}
               </span>
 
-              <h4 className="mt-3 font-semibold text-white">
+              <h4 className="mt-3 whitespace-pre-line font-semibold text-white">
                 {item.pergunta}
               </h4>
 
-              <p className="mt-3 text-sm leading-7 text-zinc-300">
+              <p className="mt-3 whitespace-pre-line text-sm leading-7 text-zinc-300">
                 {item.resposta}
               </p>
             </article>
@@ -105,11 +105,11 @@ function ResultsPanel({ parameters = {}, resultData }) {
               </div>
 
               <div>
-                <h4 className="font-semibold text-white">
+                <h4 className="whitespace-pre-line font-semibold text-white">
                   {item.pergunta}
                 </h4>
 
-                <p className="mt-2 text-sm leading-7 text-zinc-300">
+                <p className="mt-2 whitespace-pre-line text-sm leading-7 text-zinc-300">
                   {item.resposta}
                 </p>
               </div>
@@ -135,7 +135,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
                 PERGUNTA {index + 1}
               </span>
 
-              <h4 className="mt-3 font-semibold text-white">
+              <h4 className="mt-3 whitespace-pre-line font-semibold text-white">
                 {item.pergunta}
               </h4>
 
@@ -144,7 +144,7 @@ function ResultsPanel({ parameters = {}, resultData }) {
                   RESPOSTA / EXPLICAÇÃO
                 </p>
 
-                <p className="mt-2 text-sm leading-7 text-zinc-300">
+                <p className="mt-2 whitespace-pre-line text-sm leading-7 text-zinc-300">
                   {item.resposta}
                 </p>
               </div>
