@@ -92,16 +92,18 @@ def adaptar_conteudo(
             )
         raise HTTPException(status_code=500, detail=msg_erro)
 
-    # Tenta guardar evidência e backup no OCI Object Storage sem bloquear ou falhar a requisição caso o OCI esteja offline
+    # Guarda a evidência JSON diretamente no Bucket do OCI Object Storage após a geração
     try:
-        from src.storage import backup_directory, upload_bytes
+        from src.storage import upload_bytes
 
         json_bytes = json.dumps(resposta, ensure_ascii=False, indent=2).encode("utf-8")
-        nome_obj_nuvem = f"evidencia_{perfil.replace(' ', '')}_{formato.replace(' ', '')}.json"
+        perfil_limpo = perfil.replace("/", "_").replace(" ", "")
+        formato_limpo = formato.replace("/", "_").replace(" ", "")
+        nome_obj_nuvem = f"evidencia_{perfil_limpo}_{formato_limpo}.json"
         upload_bytes(nome_obj_nuvem, json_bytes, content_type="application/json")
-        backup_directory()
+        print(f"[OCI] Evidência guardada com sucesso no bucket: {nome_obj_nuvem}")
     except Exception as e:
-        print(f"[OCI] Aviso: conteúdo gerado, mas não foi possível salvar no Object Storage: {e}")
+        print(f"[OCI] Aviso: conteúdo gerado, mas não foi possível salvar evidência no Object Storage: {e}")
 
     return resposta
 

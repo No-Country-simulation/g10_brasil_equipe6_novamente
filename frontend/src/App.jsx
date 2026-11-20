@@ -4,7 +4,15 @@ import UploadDocument from "./components/UploadDocument";
 import ParametersPanel from "./components/ParametersPanel";
 import ResultsPanel from "./components/ResultsPanel";
 
-const API_URL = "http://localhost:8000/api/adaptar";
+const RAW_API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api/adaptar"
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+const API_URL = RAW_API_URL.endsWith("/api/adaptar")
+  ? RAW_API_URL
+  : `${RAW_API_URL}/api/adaptar`;
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
