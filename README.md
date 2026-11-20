@@ -4,7 +4,7 @@
 
 **Hackathon ONE G10 — Oracle Next Education & Alura**
 
-> Status do projeto: MVP funcional em Python com interface Streamlit, RAG local em ChromaDB e integração com Google Gemini ou Ollama.
+> Status do projeto: MVP funcional com Frontend em React + Vite, Backend REST em FastAPI (Python), RAG local em ChromaDB e integração com Google Gemini ou Ollama.
 
 ## 📖 Sobre o projeto
 
@@ -34,8 +34,8 @@ O MVP do NovaMente foi pensado para:
 
 | Categoria | Tecnologias |
 |---|---|
-| Linguagem | Python 3.12 |
-| Interface | Streamlit |
+| Frontend | React 19 + Vite + Tailwind CSS |
+| Backend / API | Python 3.12 + FastAPI + Uvicorn |
 | Orquestração de IA | LangChain |
 | LLM | Google Gemini + Ollama |
 | RAG e vetores | ChromaDB + embeddings Hugging Face |
@@ -48,26 +48,29 @@ O MVP do NovaMente foi pensado para:
 
 ```mermaid
 flowchart TD
-    UI["Streamlit: upload + parâmetros"] -->|documento| RAG["src/rag"]
+    UI["Frontend React: upload + parâmetros"] -->|POST /api/adaptar| API["FastAPI (api.py)"]
+    API -->|documento| RAG["src/rag"]
     RAG -->|chunks + busca semântica| LLM["src/llm.py"]
-    UI -->|perfil, formato e nicho| LLM
-    LLM -->|resposta JSON| UI
+    API -->|perfil, formato e nicho| LLM
+    LLM -->|resposta JSON| API
+    API -->|JSON estruturado| UI
     RAG -.->|persistência local| CHROMA["ChromaDB (.data/chroma)"]
-    UI -.->|upload/backup| OCI["OCI Object Storage"]
+    API -.->|upload/backup| OCI["OCI Object Storage"]
 ```
 
 ## 📂 Estrutura do repositório
 
 ```text
 g10_brasil_equipe6_novamente/
-├── app.py                     # Aplicação principal em Streamlit
+├── api.py                     # API REST em FastAPI (ponte entre React e motor IA)
+├── frontend/                  # Aplicação web em React + Vite + Tailwind CSS
 ├── .env.example              # Template das variáveis de ambiente
 ├── .env                      # Arquivo local para configurações sensíveis (não versionar)
 ├── .gitignore                # Exclusões de arquivos locais e dados sensíveis
-├── Dockerfile                # Imagem do container para rodar a app
-├── requirements.txt          # Dependências do projeto
+├── Dockerfile                # Imagem do container para rodar a API
+├── requirements.txt          # Dependências Python do projeto
 ├── README.md                 # Documentação principal
-├── Contrato_interno.md       # Documento interno da equipe
+├── Contrato_interno.md       # Contrato de integração Frontend <-> Backend
 ├── documents/               # Documentos de exemplo e testes
 ├── infra/
 │   └── docker-compose.yml    # Emulador local da OCI
@@ -166,23 +169,37 @@ Observações importantes:
 - Se você for usar o emulador local, configure `OCI_ENDPOINT=http://localhost:12000` e `OCI_NAMESPACE=namespace_ficticio`.
 - O arquivo `.env` não deve ser versionado.
 
-### 5) Opção A: usar o Google Gemini (nuvem)
+### 5) Iniciar o Backend (FastAPI) e o Frontend (React + Vite)
 
-Se quiser rodar a aplicação com a API do Google, basta manter o valor padrão do ambiente e iniciar a aplicação:
+Em um terminal (com o ambiente virtual Python ativado), inicie a API na porta `8000`:
 
 ```bash
-streamlit run app.py
+uvicorn api:app --reload --port 8000
 ```
 
-A interface ficará disponível em:
+(ou `python api.py`)
+
+Em outro terminal, instale as dependências do frontend e inicie o servidor de desenvolvimento do Vite:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+A interface web em React ficará disponível em:
 
 ```text
-http://localhost:8501
+http://localhost:5173
 ```
 
-### 6) Opção B: usar Ollama localmente
+Na interface, você pode escolher entre:
+- **Nuvem — Google Gemini:** informando sua API Key do Google Gemini;
+- **Local — Ollama:** selecionando qualquer modelo instalado localmente no Ollama (`http://localhost:11434`).
 
-O projeto também suporta execução local com Ollama. Para isso:
+### 6) Usar Ollama localmente
+
+O projeto também suporta execução 100% local com Ollama. Para isso:
 
 1. instale o Ollama na máquina;
 2. baixe um modelo, por exemplo:
@@ -197,11 +214,9 @@ ollama pull llama3.1:8b
 ollama serve
 ```
 
-4. na interface do Streamlit, no menu lateral, escolha:
-   - `Local (Ollama)`
-   - o modelo desejado na lista
-
-A aplicação usará automaticamente o modelo selecionado para a geração do conteúdo.
+4. na interface web do NovaMente, selecione:
+   - `Local — Ollama`
+   - o modelo desejado na lista detectada automaticamente
 
 ### 7) Emulador local da OCI (opcional)
 
@@ -221,19 +236,19 @@ OCI_NAMESPACE=namespace_ficticio
 BUCKET_NAME=nome-teste-bucket
 ```
 
-### 8) Execução em Docker
+### 8) Execução da API em Docker
 
-Também é possível rodar a aplicação em container:
+Também é possível rodar o backend em container:
 
 ```bash
-docker build -t novamente-mente .
-docker run --rm -p 8501:8501 --env-file .env novamente-mente
+docker build -t novamente-api .
+docker run --rm -p 8000:8000 --env-file .env novamente-api
 ```
 
-A app fica disponível em:
+A API fica disponível em:
 
 ```text
-http://localhost:8501
+http://localhost:8000
 ```
 
 ## ✅ Como validar o projeto
@@ -256,7 +271,7 @@ python -m unittest src.test_storage
 2. mantenha o `.env` local e fora do controle de versão;
 3. crie branches por tarefa e mantenha o escopo focado;
 4. prefira alterações relacionadas ao módulo que você está trabalhando
-   (`app.py`, `src/llm.py`, `src/rag/`, `src/storage.py`);
+   (`api.py`, `frontend/`, `src/llm.py`, `src/rag/`, `src/storage.py`);
 5. antes de enviar mudanças, teste a funcionalidade relevante e confirme que a aplicação ainda sobe corretamente.
 
 ---

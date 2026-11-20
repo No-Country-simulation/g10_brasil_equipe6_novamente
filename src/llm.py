@@ -18,7 +18,7 @@ load_dotenv()
  
  
 def get_llm(temperature: float = 0.3, json_mode: bool = False) -> ChatGoogleGenerativeAI | ChatOllama:
-    # Lê a flag do ambiente (que o Streamlit vai injetar)
+    # Lê a flag do ambiente configurada pela API
     if os.getenv("USE_LOCAL_LLM", "False") == "True":
         # Lê o nome do modelo dinamicamente
         modelo_local = os.getenv("OLLAMA_MODEL", "llama3.1")
@@ -30,10 +30,10 @@ def get_llm(temperature: float = 0.3, json_mode: bool = False) -> ChatGoogleGene
  
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GOOGLE_API_KEY não encontrada. Configure no arquivo .env")
+        raise ValueError("GOOGLE_API_KEY não encontrada. Configure no arquivo .env ou informe na interface.")
  
     return ChatGoogleGenerativeAI(
-        model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"), # Sugestão: muda para o 1.5 aqui para evitar falhas de cota
+        model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
         google_api_key=api_key,
         temperature=temperature,
         max_retries=3,
@@ -73,7 +73,7 @@ class SaidaLLM(BaseModel):
  
 # --- Prompts por perfil e formato (base: documentação do Gustavo, prompts_e_testes/) ---
 # As chaves de INSTRUCOES_PERFIL e INSTRUCOES_FORMATO precisam ser IGUAIS aos textos
-# das caixas de seleção do app.py.
+# enviados pelo frontend React / API.
  
 INSTRUCOES_PERFIL = {
     "Iniciante": (
@@ -105,7 +105,10 @@ INSTRUCOES_PERFIL = {
  
 INSTRUCOES_FORMATO = {
     "Flashcards": (
-        "Cada item é um flashcard que testa um único objetivo de aprendizagem. "
+        "Coloque os flashcards dentro da lista 'conteudo_adaptado.itens' (nunca transforme "
+        "'conteudo_adaptado' em uma lista direta; 'conteudo_adaptado' deve ser um objeto contendo "
+        "'titulo', 'introducao_contextualizada' e 'itens'). "
+        "Cada item de 'itens' é um flashcard que testa um único objetivo de aprendizagem. "
         "topico_ou_pergunta: pergunta clara, específica e independente, sem entregar a resposta. "
         "explicacao_ou_resposta: resposta direta e correta, preservando termos, condições e "
         "limitações importantes. Evite perguntas vagas, perguntas que misturem vários conceitos, "
@@ -162,10 +165,144 @@ SYSTEM_PROMPT = (
     "- tempo_estimado_estudo_minutos: número inteiro aproximado, nunca zero, considerando "
     "extensão, complexidade e quantidade de itens.\n\n"
     "SAÍDA\n"
-    "Responda APENAS com JSON válido, sem markdown e sem texto fora do JSON.\n\n"
+    "Responda APENAS com JSON válido, sem markdown e sem texto fora do JSON.\n"
+    "O JSON raiz DEVE obrigatoriamente conter as chaves 'metadados' (objeto) e 'conteudo_adaptado' "
+    "(objeto com 'titulo', 'introducao_contextualizada' e 'itens').\n\n"
     "{format_instructions}"
 )
- 
+
+
+def _normalizar_saida_bruta(
+    bruto: dict | list,
+    nome_ficheiro: str,
+    perfil: str,
+    formato: str,
+) -> dict:
+    """
+    Corrige variações estruturais comuns de modelos locais (ex.: quando o LLM
+    retorna 'conteudo_adaptado' diretamente como lista de itens nos Flashcards
+    ou usa chaves alternativas como 'pergunta'/'resposta' ou 'front'/'back').
+    """
+    if isinstance(bruto, list):
+        bruto = {"conteudo_adaptado": {"itens": bruto}}
+    elif not isinstance(bruto, dict):
+        return bruto
+
+    dados = dict(bruto)
+    meta = dados.get("metadados")
+    if not isinstance(meta, dict):
+        meta = {}
+
+    conteudo = dados.get("conteudo_adaptado")
+
+    # Caso clássico em modelos 8B nos Flashcards: conteudo_adaptado vem como list[...]
+    if isinstance(conteudo, list):
+        conteudo = {
+            "titulo": (
+                dados.get("titulo")
+                or meta.get("titulo")
+                or f"{formato}: {nome_ficheiro}"
+            ),
+            "introducao_contextualizada": (
+                dados.get("introducao_contextualizada")
+                or meta.get("introducao_contextualizada")
+                or f"Material de estudo em formato de {formato} adaptado para o perfil {perfil}."
+            ),
+            "itens": conteudo,
+        }
+    elif not isinstance(conteudo, dict):
+        itens_raiz = (
+            dados.get("itens")
+            or dados.get("flashcards")
+            or dados.get("questoes")
+            or []
+        )
+        conteudo = {
+            "titulo": dados.get("titulo") or meta.get("titulo") or f"{formato}: {nome_ficheiro}",
+            "introducao_contextualizada": (
+                dados.get("introducao_contextualizada")
+                or meta.get("introducao_contextualizada")
+                or f"Material de estudo em formato de {formato} adaptado para o perfil {perfil}."
+            ),
+            "itens": itens_raiz if isinstance(itens_raiz, list) else [],
+        }
+
+    # Garante campos obrigatórios de conteudo_adaptado
+    if not conteudo.get("titulo"):
+        conteudo["titulo"] = dados.get("titulo") or meta.get("titulo") or f"{formato}: {nome_ficheiro}"
+    if not conteudo.get("introducao_contextualizada"):
+        conteudo["introducao_contextualizada"] = (
+            dados.get("introducao_contextualizada")
+            or meta.get("introducao_contextualizada")
+            or f"Material de estudo em formato de {formato} adaptado para o perfil {perfil}."
+        )
+
+    itens_brutos = (
+        conteudo.get("itens")
+        or conteudo.get("flashcards")
+        or dados.get("itens")
+        or dados.get("flashcards")
+        or []
+    )
+    itens_normalizados = []
+    if isinstance(itens_brutos, list):
+        for item in itens_brutos:
+            if not isinstance(item, dict):
+                continue
+            pergunta = (
+                item.get("topico_ou_pergunta")
+                or item.get("pergunta")
+                or item.get("topico")
+                or item.get("front")
+                or item.get("frente")
+                or item.get("titulo")
+                or ""
+            )
+            resposta = (
+                item.get("explicacao_ou_resposta")
+                or item.get("resposta")
+                or item.get("explicacao")
+                or item.get("back")
+                or item.get("verso")
+                or item.get("conteudo")
+                or ""
+            )
+            if str(pergunta).strip() and str(resposta).strip():
+                itens_normalizados.append({
+                    "topico_ou_pergunta": str(pergunta).strip(),
+                    "explicacao_ou_resposta": str(resposta).strip(),
+                })
+
+    conteudo["itens"] = itens_normalizados
+
+    # Garante campos obrigatórios de metadados
+    tempo = meta.get("tempo_estimado_estudo_minutos", dados.get("tempo_estimado_estudo_minutos"))
+    try:
+        tempo_int = int(tempo)
+        if tempo_int <= 0:
+            tempo_int = max(5, len(itens_normalizados) * 3)
+    except (TypeError, ValueError):
+        tempo_int = max(5, len(itens_normalizados) * 3)
+
+    conceitos = meta.get("conceitos_chave", dados.get("conceitos_chave"))
+    if not isinstance(conceitos, list):
+        conceitos = []
+    conceitos_limpos = [str(c).strip() for c in conceitos if str(c).strip()]
+
+    dados["metadados"] = {
+        "perfil_aplicado": str(meta.get("perfil_aplicado") or perfil),
+        "formato_gerado": str(meta.get("formato_gerado") or formato),
+        "tempo_estimado_estudo_minutos": tempo_int,
+        "conceitos_chave": conceitos_limpos,
+    }
+    dados["conteudo_adaptado"] = {
+        "titulo": str(conteudo["titulo"]).strip(),
+        "introducao_contextualizada": str(conteudo["introducao_contextualizada"]).strip(),
+        "itens": itens_normalizados,
+    }
+    return dados
+
+
 def criar_chain_json():
     parser = JsonOutputParser(pydantic_object=SaidaLLM)
     prompt = ChatPromptTemplate.from_messages([
@@ -203,7 +340,13 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
                 perfil, "Adapte a linguagem e a profundidade ao perfil informado."),
             "instrucao_formato": INSTRUCOES_FORMATO.get(formato, "Organize em itens claros."),
         })
-        saida = SaidaLLM.model_validate(bruto)  
+        bruto_normalizado = _normalizar_saida_bruta(
+            bruto=bruto,
+            nome_ficheiro=nome_ficheiro,
+            perfil=perfil,
+            formato=formato,
+        )
+        saida = SaidaLLM.model_validate(bruto_normalizado)  
     except (OutputParserException, ValidationError) as e:
         return {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"}
     except Exception as e:  
