@@ -1,22 +1,23 @@
 variable "compartment_id" {
-  description = "OCID do compartimento (ou tenancy OCID para o root)"
-  type        = string
+  type = string
 }
 
 variable "region" {
-  description = "Região da OCI"
-  type        = string
-  default     = "us-sanjose-1"
+  type    = string
+  default = "us-sanjose-1"
 }
 
 variable "bucket_name" {
-  description = "Nome do bucket de produção do projeto"
-  type        = string
-  default     = "novamente-bucket-prod"
+  type    = string
+  default = "novamente-bucket-prod"
 }
 
 variable "oci_config_profile" {
-  description = "Perfil utilizado no arquivo ~/.oci/config"
-  type        = string
-  default     = "DEFAULT"
+  type    = string
+  default = "DEFAULT"
+}
+
+variable "ssh_public_key_path" {
+  type    = string
+  default = "~/.ssh/id_ed25519.pub"
 }
