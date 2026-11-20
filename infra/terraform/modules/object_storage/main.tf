@@ -1,12 +1,3 @@
-terraform {
-  required_providers {
-    oci = {
-      source  = "oracle/oci"
-      version = "~> 9.13.0"
-    }
-  }
-}
-
 data "oci_objectstorage_namespace" "ns" {
   compartment_id = var.compartment_id
 }
