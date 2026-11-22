@@ -2,6 +2,7 @@
 
 import os
 import json
+from typing import TypedDict
 import urllib.request
  
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.exceptions import OutputParserException
+from langgraph.graph import StateGraph, START, END
  
 # Importando a função do Moab 
 from src.rag import recuperar_contexto 
@@ -161,9 +163,14 @@ INSTRUCOES_FORMATO = {
         "Gere 5 flashcards quando o conteúdo permitir e menos se não houver informação suficiente."
     ),
     "Quiz": (
-        "Cada item é uma questão de múltipla escolha: coloque a pergunta e as alternativas "
-        "A, B, C e D em topico_ou_pergunta, e a letra correta com uma justificativa curta em "
-        "explicacao_ou_resposta. Apenas uma alternativa pode estar correta e as demais devem "
+        "Cada item é uma questão de múltipla escolha. Em topico_ou_pergunta, escreva o enunciado "
+        "da pergunta na primeira linha, seguido por quebras de linha com as 4 alternativas:\n"
+        "A) texto da alternativa A\n"
+        "B) texto da alternativa B\n"
+        "C) texto da alternativa C\n"
+        "D) texto da alternativa D\n"
+        "Em explicacao_ou_resposta, comece OBRIGATORIAMENTE com 'Letra correta: X. ' (onde X é A, B, C ou D) "
+        "seguido da justificativa curta. Apenas uma alternativa pode estar correta e as demais devem "
         "ser plausíveis, mas erradas segundo o conteúdo-base. Não use 'todas as anteriores'. "
         "Gere até 5 questões."
     ),
@@ -359,12 +366,31 @@ def criar_chain_json(model_override: str | None = None):
     ]).partial(format_instructions=parser.get_format_instructions())
     return prompt | get_llm(json_mode=True, model_override=model_override) | parser
  
-# gerar_conteudo
-def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
-                   contexto: str | None = None) -> dict:
-   
+# --- Orquestração Multi-Agentes com LangGraph ---
+
+class EstadoMultiAgente(TypedDict, total=False):
+    nome_ficheiro: str
+    perfil: str
+    formato: str
+    nicho: str
+    contexto: str | None
+    bruto: dict | list | None
+    resultado: dict | None
+    agentes_executados: list[str]
+
+
+def agente_pesquisador_rag(state: EstadoMultiAgente) -> dict:
+    """
+    Agente 1 — Pesquisador RAG:
+    Formula a consulta semântica e recupera os trechos mais relevantes no ChromaDB.
+    """
+    agentes = list(state.get("agentes_executados", [])) + ["Agente Pesquisador RAG"]
+    contexto = state.get("contexto")
     if contexto is None:
-        # --- INCLUSÃO: Integração Real com o RAG ---
+        nicho = state["nicho"]
+        perfil = state["perfil"]
+        formato = state["formato"]
+        nome_ficheiro = state["nome_ficheiro"]
         foco_nicho = f" com aplicação em {nicho}" if nicho and nicho != "Geral" else ""
         query_busca = (
             f"Conceitos principais, definições, etapas técnicas, exemplos e pontos-chave "
@@ -372,8 +398,22 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
         )
         contexto_extraido = recuperar_contexto(query=query_busca, nome_arquivo=nome_ficheiro)
         contexto = contexto_extraido if contexto_extraido.strip() else "Informação não encontrada no documento."
-        # -------------------------------------------
- 
+    return {"contexto": contexto, "agentes_executados": agentes}
+
+
+def agente_redator_pedagogico(state: EstadoMultiAgente) -> dict:
+    """
+    Agente 2 — Redator Pedagógico:
+    Transforma os trechos recuperados pelo Pesquisador RAG em conteúdo didático
+    adaptado ao perfil, formato e nicho solicitados.
+    """
+    agentes = list(state.get("agentes_executados", [])) + ["Agente Redator Pedagógico"]
+    perfil = state["perfil"]
+    formato = state["formato"]
+    nicho = state["nicho"]
+    nome_ficheiro = state["nome_ficheiro"]
+    contexto = state.get("contexto") or "Informação não encontrada no documento."
+
     payload = {
         "perfil": perfil,
         "formato": formato,
@@ -381,7 +421,8 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
         "nome_ficheiro": nome_ficheiro,
         "contexto": contexto,
         "instrucao_perfil": INSTRUCOES_PERFIL.get(
-            perfil, "Adapte a linguagem e a profundidade ao perfil informado."),
+            perfil, "Adapte a linguagem e a profundidade ao perfil informado."
+        ),
         "instrucao_formato": INSTRUCOES_FORMATO.get(formato, "Organize em itens claros."),
     }
 
@@ -398,43 +439,118 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
             modelos_tentativa = [atual] + [m for m in GEMINI_FALLBACK_MODELS if m != atual]
 
     primeiro_erro: Exception | None = None
-    saida: SaidaLLM | None = None
     for modelo in modelos_tentativa:
         try:
-            print(f"[LLM] Invocando modelo: {modelo or os.getenv('OLLAMA_MODEL', 'local')}")
+            print(f"[LangGraph -> Redator] Invocando modelo: {modelo or os.getenv('OLLAMA_MODEL', 'local')}")
             bruto = criar_chain_json(model_override=modelo).invoke(payload)
-            bruto_normalizado = _normalizar_saida_bruta(
-                bruto=bruto,
-                nome_ficheiro=nome_ficheiro,
-                perfil=perfil,
-                formato=formato,
-            )
-            saida = SaidaLLM.model_validate(bruto_normalizado)
-            primeiro_erro = None
-            break
-        except (OutputParserException, ValidationError) as e:
-            return {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"}
+            return {"bruto": bruto, "agentes_executados": agentes}
+        except OutputParserException as e:
+            return {
+                "resultado": {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"},
+                "agentes_executados": agentes,
+            }
         except Exception as e:
-            print(f"[LLM] Erro no modelo {modelo}: {e}")
+            print(f"[LangGraph -> Redator] Erro no modelo {modelo}: {e}")
             if primeiro_erro is None:
                 primeiro_erro = e
             msg = str(e).lower()
-            if "not_found" in msg or "404" in msg or "not found" in msg or "503" in msg or "429" in msg or "quota" in msg:
+            if any(k in msg for k in ("not_found", "404", "not found", "503", "429", "quota")):
                 continue
             break
 
-    if primeiro_erro is not None or saida is None:
-        return {"status": "erro", "mensagem": f"Falha ao chamar o modelo: {primeiro_erro}"}
- 
-    # Sem itens = o documento não trouxe informação suficiente (regra 7 do prompt).
+    return {
+        "resultado": {"status": "erro", "mensagem": f"Falha ao chamar o modelo: {primeiro_erro}"},
+        "agentes_executados": agentes,
+    }
+
+
+def agente_critico_revisor(state: EstadoMultiAgente) -> dict:
+    """
+    Agente 3 — Crítico / Revisor:
+    Audita a estrutura do material gerado pelo Redator Pedagógico, corrige desvios
+    de schema, valida contra o contrato Pydantic (SaidaLLM) e verifica rigor factual.
+    """
+    agentes = list(state.get("agentes_executados", [])) + ["Agente Crítico / Revisor"]
+    if state.get("resultado"):
+        return {"agentes_executados": agentes}
+
+    perfil = state["perfil"]
+    formato = state["formato"]
+    nome_ficheiro = state["nome_ficheiro"]
+    bruto = state.get("bruto")
+
+    try:
+        bruto_normalizado = _normalizar_saida_bruta(
+            bruto=bruto,
+            nome_ficheiro=nome_ficheiro,
+            perfil=perfil,
+            formato=formato,
+        )
+        saida = SaidaLLM.model_validate(bruto_normalizado)
+    except (OutputParserException, ValidationError) as e:
+        return {
+            "resultado": {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"},
+            "agentes_executados": agentes,
+        }
+
     if not saida.conteudo_adaptado.itens:
-        return {"status": "erro",
-                "mensagem": "O documento não trouxe informação suficiente para gerar itens confiáveis."}
- 
+        return {
+            "resultado": {
+                "status": "erro",
+                "mensagem": "O documento não trouxe informação suficiente para gerar itens confiáveis.",
+            },
+            "agentes_executados": agentes,
+        }
+
     resultado = {"status": "sucesso", **saida.model_dump()}
     resultado["metadados"]["perfil_aplicado"] = perfil
     resultado["metadados"]["formato_gerado"] = formato
-    return resultado
+    resultado["metadados"]["pipeline_multiagente"] = agentes
+    return {"resultado": resultado, "agentes_executados": agentes}
+
+
+def _roteador_pos_redacao(state: EstadoMultiAgente) -> str:
+    if state.get("resultado"):
+        return END
+    return "agente_critico_revisor"
+
+
+def criar_grafo_multiagentes():
+    """Compila o grafo StateGraph do LangGraph com os 3 agentes especializados."""
+    workflow = StateGraph(EstadoMultiAgente)
+    workflow.add_node("agente_pesquisador_rag", agente_pesquisador_rag)
+    workflow.add_node("agente_redator_pedagogico", agente_redator_pedagogico)
+    workflow.add_node("agente_critico_revisor", agente_critico_revisor)
+
+    workflow.add_edge(START, "agente_pesquisador_rag")
+    workflow.add_edge("agente_pesquisador_rag", "agente_redator_pedagogico")
+    workflow.add_conditional_edges(
+        "agente_redator_pedagogico",
+        _roteador_pos_redacao,
+        {"agente_critico_revisor": "agente_critico_revisor", END: END},
+    )
+    workflow.add_edge("agente_critico_revisor", END)
+    return workflow.compile()
+
+
+_GRAFO_MULTIAGENTES = criar_grafo_multiagentes()
+
+
+def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
+                   contexto: str | None = None) -> dict:
+    """Executa o pipeline Multi-Agentes (LangGraph) completo."""
+    estado_final = _GRAFO_MULTIAGENTES.invoke({
+        "nome_ficheiro": nome_ficheiro,
+        "perfil": perfil,
+        "formato": formato,
+        "nicho": nicho,
+        "contexto": contexto,
+        "agentes_executados": [],
+    })
+    return estado_final.get("resultado") or {
+        "status": "erro",
+        "mensagem": "Falha inesperada na orquestração multi-agentes.",
+    }
 
 
 def preparar_prompts_rag(
@@ -516,6 +632,11 @@ def validar_e_formatar_saida_local(
     resultado = {"status": "sucesso", **saida.model_dump()}
     resultado["metadados"]["perfil_aplicado"] = perfil
     resultado["metadados"]["formato_gerado"] = formato
+    resultado["metadados"]["pipeline_multiagente"] = [
+        "Agente Pesquisador RAG",
+        "Agente Redator Pedagógico (Ollama Local)",
+        "Agente Crítico / Revisor",
+    ]
     return resultado
  
 # Teste (rodar na raiz do projeto: python -m src.llm)

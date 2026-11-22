@@ -4,11 +4,12 @@ python-dotenv
 # Oracle Cloud Infrastructure
 oci
 
-# LangChain
+# LangChain & Multi-Agent Orchestration
 langchain
 langchain-core
 langchain-google-genai
 langchain-ollama
+langgraph
 
 # RAG - Document Processing
 pypdf
