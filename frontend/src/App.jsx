@@ -5,14 +5,22 @@ import ParametersPanel from "./components/ParametersPanel";
 import ResultsPanel from "./components/ResultsPanel";
 
 const RAW_API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/adaptar"
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:8000/api/adaptar" : "/api/adaptar")
 )
   .trim()
   .replace(/\/+$/, "");
 
-const API_URL = RAW_API_URL.endsWith("/api/adaptar")
-  ? RAW_API_URL
-  : `${RAW_API_URL}/api/adaptar`;
+const RESOLVED_API_URL =
+  typeof window !== "undefined" &&
+  window.location.protocol === "https:" &&
+  RAW_API_URL.startsWith("http://137.131.213.187")
+    ? "/api/adaptar"
+    : RAW_API_URL;
+
+const API_URL = RESOLVED_API_URL.endsWith("/api/adaptar")
+  ? RESOLVED_API_URL
+  : `${RESOLVED_API_URL}/api/adaptar`;
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
