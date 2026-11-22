@@ -4,6 +4,9 @@
 
 **Hackathon ONE G10 — Oracle Next Education & Alura**
 
+🌐 **Aplicação em Produção (Vercel):** [https://g10brasilequipe6novamente-frontend.vercel.app/](https://g10brasilequipe6novamente-frontend.vercel.app/)  
+⚡ **API Backend em Produção (Oracle Cloud HTTPS):** [https://137-131-213-187.sslip.io/](https://137-131-213-187.sslip.io/)
+
 > **Status do projeto:** Aplicação em Produção com Frontend React + Vite na **Vercel**, Backend FastAPI com HTTPS (Let's Encrypt) em **VM Compute na Oracle Cloud (OCI)**, Persistência de Evidências no **OCI Object Storage**, Infraestrutura como Código com **Terraform**, Orquestração **Multi-Agentes com LangGraph**, **RAG com ChromaDB**, **Suporte Multimodal** e execução híbrida com **Google Gemini** ou **Ollama Local (GPU do visitante)**.
 
 ---
