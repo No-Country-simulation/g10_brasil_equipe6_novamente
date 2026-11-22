@@ -175,13 +175,19 @@ function App() {
             ],
             format: "json",
             stream: false,
-            options: { temperature: 0.3 },
+            options: {
+              temperature: 0.3,
+              repeat_penalty: 1.15,
+              num_predict: 1200,
+            },
           }),
         });
         const ollamaData = await ollamaResponse.json().catch(() => null);
         if (!ollamaResponse.ok || !ollamaData?.message?.content) {
           throw new Error(
-            "Falha ao gerar conteúdo no Ollama local da sua máquina (porta 11434)."
+            ollamaData?.error
+              ? `Erro no Ollama local: ${ollamaData.error}`
+              : "Falha ao gerar conteúdo no Ollama local da sua máquina (porta 11434)."
           );
         }
 

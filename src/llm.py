@@ -71,6 +71,8 @@ def get_llm(
             model=modelo_local,
             base_url=ollama_base_url,
             temperature=temperature,
+            repeat_penalty=1.15,
+            num_predict=1200,
             format="json" if json_mode else "",
         )
  
