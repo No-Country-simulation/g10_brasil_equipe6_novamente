@@ -1,14 +1,18 @@
 from contextlib import asynccontextmanager
 import json
 import os
-import urllib.request
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from src.rag import processar_e_indexar_documento
 from src.rag.embeddings import get_embeddings
 from src.rag.vector_store import get_vector_store
-from src.llm import gerar_conteudo
+from src.llm import (
+    gerar_conteudo,
+    preparar_prompts_rag,
+    validar_e_formatar_saida_local,
+)
 
 
 @asynccontextmanager
@@ -40,19 +44,94 @@ def health_check():
     return {"status": "online", "service": "NovaMente API"}
 
 
-@app.get("/api/ollama/tags")
-def listar_modelos_ollama():
-    """Ponte para listar os modelos do Ollama (local ou via túnel SSH reverso na VM)."""
-    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+def _salvar_evidencia_oci(resposta: dict, perfil: str, formato: str) -> None:
+    """Guarda a evidência JSON diretamente no Bucket do OCI Object Storage após a geração."""
     try:
-        req = urllib.request.Request(f"{ollama_base}/api/tags")
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        from src.storage import upload_bytes
+
+        json_bytes = json.dumps(resposta, ensure_ascii=False, indent=2).encode("utf-8")
+        perfil_limpo = perfil.replace("/", "_").replace(" ", "")
+        formato_limpo = formato.replace("/", "_").replace(" ", "")
+        nome_obj_nuvem = f"evidencia_{perfil_limpo}_{formato_limpo}.json"
+        upload_bytes(nome_obj_nuvem, json_bytes, content_type="application/json")
+        print(f"[OCI] Evidência guardada com sucesso no bucket: {nome_obj_nuvem}")
+    except Exception as e:
+        print(f"[OCI] Aviso: conteúdo gerado, mas não foi possível salvar evidência no Object Storage: {e}")
+
+
+@app.post("/api/preparar-rag")
+def preparar_rag_para_ollama_local(
+    file: UploadFile = File(...),
+    perfil: str = Form(...),
+    formato: str = Form(...),
+    nicho: str = Form(...),
+):
+    """
+    Etapa 1 do modo Local (Ollama no PC do visitante):
+    Indexa o documento no ChromaDB da OCI e devolve o system_prompt + user_prompt
+    para o navegador do visitante executar no http://localhost:11434 da própria máquina.
+    """
+    arquivo_bytes = file.file.read()
+    if not arquivo_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="O arquivo enviado está vazio. Por favor, anexe um documento com texto.",
+        )
+
+    nome_arquivo = (file.filename or "documento.txt").strip()
+    try:
+        sucesso_rag = processar_e_indexar_documento(arquivo_bytes, nome_arquivo)
     except Exception as e:
         raise HTTPException(
-            status_code=503,
-            detail=f"Ollama indisponível em {ollama_base}: {e}",
+            status_code=422,
+            detail=f"Erro ao ler o documento. Pode ser um PDF digitalizado (sem texto) ou protegido. Detalhe: {e}",
         ) from e
+
+    if not sucesso_rag:
+        raise HTTPException(
+            status_code=422,
+            detail="Falha ao ler/indexar o documento. Verifique se o arquivo possui texto legível.",
+        )
+
+    return preparar_prompts_rag(
+        nome_ficheiro=nome_arquivo,
+        perfil=perfil,
+        formato=formato,
+        nicho=nicho,
+    )
+
+
+class FinalizarLocalRequest(BaseModel):
+    nome_ficheiro: str
+    perfil: str
+    formato: str
+    nicho: str = "Geral"
+    resposta_bruta: str | dict
+
+
+@app.post("/api/finalizar-local")
+def finalizar_geracao_ollama_local(dados: FinalizarLocalRequest):
+    """
+    Etapa 2 do modo Local (Ollama no PC do visitante):
+    Valida/normaliza o JSON gerado pelo Ollama do visitante e salva a evidência no Bucket da OCI.
+    """
+    resposta = validar_e_formatar_saida_local(
+        resposta_bruta=dados.resposta_bruta,
+        nome_ficheiro=dados.nome_ficheiro,
+        perfil=dados.perfil,
+        formato=dados.formato,
+    )
+    if resposta.get("status") != "sucesso":
+        msg_erro = str(resposta.get("mensagem", "Erro na validação da resposta do modelo local."))
+        if "não trouxe informação suficiente" in msg_erro:
+            raise HTTPException(
+                status_code=422,
+                detail="O documento não possui informações suficientes para gerar conteúdo com rigor factual.",
+            )
+        raise HTTPException(status_code=422, detail=msg_erro)
+
+    _salvar_evidencia_oci(resposta, dados.perfil, dados.formato)
+    return resposta
 
 
 @app.post("/api/adaptar")
@@ -124,18 +203,7 @@ def adaptar_conteudo(
             )
         raise HTTPException(status_code=500, detail=msg_erro)
 
-    # Guarda a evidência JSON diretamente no Bucket do OCI Object Storage após a geração
-    try:
-        from src.storage import upload_bytes
-
-        json_bytes = json.dumps(resposta, ensure_ascii=False, indent=2).encode("utf-8")
-        perfil_limpo = perfil.replace("/", "_").replace(" ", "")
-        formato_limpo = formato.replace("/", "_").replace(" ", "")
-        nome_obj_nuvem = f"evidencia_{perfil_limpo}_{formato_limpo}.json"
-        upload_bytes(nome_obj_nuvem, json_bytes, content_type="application/json")
-        print(f"[OCI] Evidência guardada com sucesso no bucket: {nome_obj_nuvem}")
-    except Exception as e:
-        print(f"[OCI] Aviso: conteúdo gerado, mas não foi possível salvar evidência no Object Storage: {e}")
+    _salvar_evidencia_oci(resposta, perfil, formato)
 
     return resposta
 

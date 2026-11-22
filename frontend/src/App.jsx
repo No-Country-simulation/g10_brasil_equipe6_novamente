@@ -22,7 +22,8 @@ const API_URL = RESOLVED_API_URL.endsWith("/api/adaptar")
   ? RESOLVED_API_URL
   : `${RESOLVED_API_URL}/api/adaptar`;
 
-const OLLAMA_TAGS_PROXY_URL = API_URL.replace(/\/api\/adaptar$/, "/api/ollama/tags");
+const API_PREPARAR_RAG_URL = API_URL.replace(/\/api\/adaptar$/, "/api/preparar-rag");
+const API_FINALIZAR_LOCAL_URL = API_URL.replace(/\/api\/adaptar$/, "/api/finalizar-local");
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -63,17 +64,10 @@ function App() {
       setLocalModels([]);
 
       try {
-        let response = await fetch(
-          OLLAMA_TAGS_PROXY_URL,
+        const response = await fetch(
+          "http://localhost:11434/api/tags",
           { signal: controller.signal }
-        ).catch(() => null);
-
-        if (!response || !response.ok) {
-          response = await fetch(
-            "http://localhost:11434/api/tags",
-            { signal: controller.signal }
-          );
-        }
+        );
 
         if (!response.ok) {
           throw new Error("Ollama indisponível");
@@ -107,7 +101,7 @@ function App() {
 
         setOllamaError(
           typeof window !== "undefined" && window.location.protocol === "https:"
-            ? "O modo Local (Ollama) roda apenas localmente (localhost). Na versão em nuvem (Vercel + OCI), utilize 'Nuvem — Google Gemini'."
+            ? 'Ollama local não detectado na porta 11434 ou bloqueado por CORS. Para usar o Ollama do seu PC em um site HTTPS, defina OLLAMA_ORIGINS="*" nas variáveis de ambiente da sua máquina e reinicie o Ollama.'
             : "Ollama não detectado na porta 11434 ou não há modelos carregados"
         );
       } finally {
@@ -146,61 +140,104 @@ function App() {
       formData.append("perfil", parameters.profile);
       formData.append("formato", parameters.format);
       formData.append("nicho", parameters.niche);
-
-      formData.append(
-        "motor",
-        parameters.engine === "Nuvem"
-          ? "Nuvem (Google Gemini)"
-          : "Local (Ollama)"
-      );
-
-      formData.append(
-        "modelo_local",
-        parameters.engine === "Local"
-          ? parameters.localModel
-          : ""
-      );
-
-      formData.append(
-        "apiKey",
-        parameters.engine === "Nuvem"
-          ? parameters.apiKey
-          : ""
-      );
-
       formData.append("file", selectedFile);
 
-      const response = await fetch(API_URL, {
-        method: "POST",
-        body: formData,
-      });
+      let data = null;
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const detail = data?.detail;
-
-        if (typeof detail === "string" && detail.trim()) {
-          throw new Error(detail);
-        }
-        if (response.status === 413) {
+      if (parameters.engine === "Local") {
+        // 1. Backend na OCI indexa o documento no RAG (ChromaDB) e devolve os prompts
+        const ragResponse = await fetch(API_PREPARAR_RAG_URL, {
+          method: "POST",
+          body: formData,
+        });
+        const ragData = await ragResponse.json().catch(() => null);
+        if (!ragResponse.ok) {
           throw new Error(
-            "O arquivo enviado excede o limite de 4.5 MB do proxy gratuito da Vercel. Envie um PDF/TXT/MD menor que 4.5 MB."
+            typeof ragData?.detail === "string"
+              ? ragData.detail
+              : `Falha ao indexar documento no RAG (HTTP ${ragResponse.status}).`
           );
         }
-        if (response.status === 404) {
+
+        // 2. Navegador do visitante chama o Ollama instalado no próprio PC dele (localhost:11434)
+        const ollamaResponse = await fetch("http://localhost:11434/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: parameters.localModel,
+            messages: [
+              { role: "system", content: ragData.system_prompt },
+              { role: "user", content: ragData.user_prompt },
+            ],
+            format: "json",
+            stream: false,
+            options: { temperature: 0.3 },
+          }),
+        });
+        const ollamaData = await ollamaResponse.json().catch(() => null);
+        if (!ollamaResponse.ok || !ollamaData?.message?.content) {
           throw new Error(
-            "Rota /api/adaptar não encontrada (404). Verifique se o commit com frontend/vercel.json já foi enviado (git push) e publicado na Vercel."
+            "Falha ao gerar conteúdo no Ollama local da sua máquina (porta 11434)."
           );
         }
-        if (response.status === 504 || response.status === 502) {
+
+        // 3. Backend na OCI valida/normaliza o JSON (SaidaLLM) e salva a evidência no Bucket da OCI
+        const finalResponse = await fetch(API_FINALIZAR_LOCAL_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nome_ficheiro: ragData.nome_ficheiro || selectedFile.name,
+            perfil: parameters.profile,
+            formato: parameters.format,
+            nicho: parameters.niche,
+            resposta_bruta: ollamaData.message.content,
+          }),
+        });
+        data = await finalResponse.json().catch(() => null);
+        if (!finalResponse.ok) {
           throw new Error(
-            `Tempo limite do proxy da Vercel excedido (HTTP ${response.status}). Tente com um documento menor.`
+            typeof data?.detail === "string"
+              ? data.detail
+              : `O modelo local não retornou um conteúdo válido (HTTP ${finalResponse.status}).`
           );
         }
-        throw new Error(
-          `O servidor não conseguiu processar o documento (HTTP ${response.status}).`
-        );
+      } else {
+        formData.append("motor", "Nuvem (Google Gemini)");
+        formData.append("modelo_local", "");
+        formData.append("apiKey", parameters.apiKey);
+
+        const response = await fetch(API_URL, {
+          method: "POST",
+          body: formData,
+        });
+
+        data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const detail = data?.detail;
+
+          if (typeof detail === "string" && detail.trim()) {
+            throw new Error(detail);
+          }
+          if (response.status === 413) {
+            throw new Error(
+              "O arquivo enviado excede o limite de 4.5 MB do proxy gratuito da Vercel. Envie um PDF/TXT/MD menor que 4.5 MB."
+            );
+          }
+          if (response.status === 404) {
+            throw new Error(
+              "Rota /api/adaptar não encontrada (404). Verifique se o commit com frontend/vercel.json já foi enviado (git push) e publicado na Vercel."
+            );
+          }
+          if (response.status === 504 || response.status === 502) {
+            throw new Error(
+              `Tempo limite do proxy da Vercel excedido (HTTP ${response.status}). Tente com um documento menor.`
+            );
+          }
+          throw new Error(
+            `O servidor não conseguiu processar o documento (HTTP ${response.status}).`
+          );
+        }
       }
 
       if (!data?.conteudo_adaptado) {
