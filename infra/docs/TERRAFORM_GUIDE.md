@@ -64,7 +64,37 @@ terraform plan
 terraform apply -auto-approve
 ```
 
-*(Nota: Caso o bucket já exista na conta OCI e você deseje apenas vinculá-lo ao gerenciamento do Terraform sem recriar, execute antes do `apply`: `terraform import module.novamente_storage.oci_objectstorage_bucket.this n/<seu_namespace>/b/novamente-bucket-prod`)*
+*(Nota: Caso o bucket ou a VM `novamente-backend-vm` já existam na conta OCI e você deseje apenas vinculá-los ao gerenciamento do Terraform sem recriar, execute antes do `apply`:)*
+
+```bash
+# Importar bucket existente (se já criado)
+terraform import module.novamente_storage.oci_objectstorage_bucket.this n/grmth84lfd0x/b/novamente-bucket-prod
+
+# Importar a VM Always Free já criada (novamente-backend-vm)
+terraform import module.novamente_compute.oci_core_instance.this ocid1.instance.oc1.sa-saopaulo-1.antxeljrqm26vuqcott5jg2b67jqgjswj7yfgabkwq4czmtb5ehbodzcvu7a
+```
+
+*(Caso a VM já tenha sido criada manualmente pelo Console da OCI, o `user_data` do cloud-init não será reexecutado no `import`. Nesse caso, conecte via SSH na VM `137.131.213.187` e execute os passos de Swap de 4 GB, liberação da porta 8000 no `iptables` e deploy do container Docker:)*
+
+```bash
+# Dentro da VM (ubuntu@137.131.213.187):
+sudo bash -c '
+if [ ! -f /swapfile ]; then
+  fallocate -l 4G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile none swap sw 0 0" >> /etc/fstab
+fi
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y docker.io git iptables-persistent
+systemctl enable --now docker
+usermod -aG docker ubuntu
+iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
+netfilter-persistent save
+'
+```
 
 ---
 

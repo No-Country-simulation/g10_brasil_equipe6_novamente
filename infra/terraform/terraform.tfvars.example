@@ -1,5 +1,5 @@
 compartment_id     = "ocid1.compartment.oc1..seu_ocid_do_compartimento_aqui"
 region             = "sa-saopaulo-1"
 bucket_name        = "novamente-bucket-prod"
-namespace          = "seu_object_storage_namespace_aqui"
+namespace          = "grmth84lfd0x"
 existing_subnet_id = "ocid1.subnet.oc1.sa-saopaulo-1..seu_ocid_da_subnet_publica_aqui"

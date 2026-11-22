@@ -21,3 +21,9 @@ variable "project_name" {
   type    = string
   default = "novamente"
 }
+
+variable "instance_shape" {
+  description = "Shape Always Free da VM na OCI (VM.Standard.E2.1.Micro)"
+  type        = string
+  default     = "VM.Standard.E2.1.Micro"
+}
