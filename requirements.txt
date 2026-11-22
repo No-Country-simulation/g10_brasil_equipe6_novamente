@@ -13,6 +13,7 @@ langgraph
 
 # RAG - Document Processing & Multimodal Diagrams
 pypdf
+fonttools
 Pillow
 langchain-text-splitters
 
