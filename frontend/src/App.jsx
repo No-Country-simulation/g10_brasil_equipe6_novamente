@@ -4,18 +4,22 @@ import UploadDocument from "./components/UploadDocument";
 import ParametersPanel from "./components/ParametersPanel";
 import ResultsPanel from "./components/ResultsPanel";
 
+const OCI_HTTPS_BASE_URL = "https://137-131-213-187.sslip.io";
+
 const RAW_API_URL = (
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? "http://localhost:8000/api/adaptar" : "/api/adaptar")
+  (import.meta.env.DEV
+    ? "http://localhost:8000/api/adaptar"
+    : `${OCI_HTTPS_BASE_URL}/api/adaptar`)
 )
   .trim()
   .replace(/\/+$/, "");
 
+// Se estiver em produção ou se VITE_API_URL apontar para o IP HTTP da OCI, usa o domínio HTTPS direto da VM (sem limite de 4.5 MB da Vercel)
 const RESOLVED_API_URL =
-  typeof window !== "undefined" &&
-  window.location.protocol === "https:" &&
-  RAW_API_URL.startsWith("http://137.131.213.187")
-    ? "/api/adaptar"
+  RAW_API_URL.startsWith("http://137.131.213.187") ||
+  RAW_API_URL === "/api/adaptar"
+    ? `${OCI_HTTPS_BASE_URL}/api/adaptar`
     : RAW_API_URL;
 
 const API_URL = RESOLVED_API_URL.endsWith("/api/adaptar")
