@@ -198,12 +198,13 @@ function App() {
               { role: "system", content: ragData.system_prompt },
               userMessageObj,
             ],
-            format: "json",
+            format: ragData.json_schema || "json",
             stream: false,
             options: {
               temperature: 0.3,
-              repeat_penalty: 1.15,
+              repeat_penalty: 1.2,
               num_predict: 1200,
+              stop: ["\n\n\n"],
             },
           }),
         });

@@ -72,9 +72,9 @@ def get_llm(
             model=modelo_local,
             base_url=ollama_base_url,
             temperature=temperature,
-            repeat_penalty=1.15,
+            repeat_penalty=1.2,
             num_predict=1200,
-            format="json" if json_mode else "",
+            format=SaidaLLM.model_json_schema() if json_mode else "",
         )
  
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -669,6 +669,7 @@ def preparar_prompts_rag(
         "nome_ficheiro": nome_ficheiro,
         "system_prompt": system_msg,
         "user_prompt": user_msg,
+        "json_schema": SaidaLLM.model_json_schema(),
         "diagramas_extraidos": [
             {
                 "pagina": d["pagina"],
