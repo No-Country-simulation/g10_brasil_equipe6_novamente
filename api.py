@@ -1,12 +1,28 @@
+from contextlib import asynccontextmanager
 import json
 import os
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.rag import processar_e_indexar_documento
+from src.rag.embeddings import get_embeddings
+from src.rag.vector_store import get_vector_store
 from src.llm import gerar_conteudo
 
-app = FastAPI(title="NovaMente API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Pré-carrega o modelo de embeddings e o ChromaDB na RAM do processo Uvicorn no boot
+    try:
+        get_embeddings()
+        get_vector_store()
+        print("[Startup] Modelo de embeddings e ChromaDB pré-carregados na memória.")
+    except Exception as e:
+        print(f"[Startup] Aviso ao pré-carregar embeddings: {e}")
+    yield
+
+
+app = FastAPI(title="NovaMente API", lifespan=lifespan)
 
 # Libera o CORS para o React (localhost e Vercel)
 app.add_middleware(
