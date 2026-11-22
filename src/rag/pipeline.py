@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from uuid import uuid4
 
 from langchain_chroma import Chroma
@@ -75,6 +76,10 @@ class RAGPipeline:
             raise ValueError(
                 "No valid chunks were generated."
             )
+
+        max_chunks = int(os.getenv("RAG_MAX_CHUNKS", "0"))
+        if max_chunks > 0 and len(chunks) > max_chunks:
+            chunks = chunks[:max_chunks]
 
         chunk_count = index_documents(
             documents=chunks,

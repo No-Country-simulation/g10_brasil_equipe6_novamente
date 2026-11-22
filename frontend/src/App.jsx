@@ -97,7 +97,9 @@ function App() {
         }));
 
         setOllamaError(
-          "Ollama não detectado na porta 11434 ou não há modelos carregados"
+          typeof window !== "undefined" && window.location.protocol === "https:"
+            ? "O modo Local (Ollama) roda apenas localmente (localhost). Na versão em nuvem (Vercel + OCI), utilize 'Nuvem — Google Gemini'."
+            : "Ollama não detectado na porta 11434 ou não há modelos carregados"
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -169,10 +171,26 @@ function App() {
       if (!response.ok) {
         const detail = data?.detail;
 
+        if (typeof detail === "string" && detail.trim()) {
+          throw new Error(detail);
+        }
+        if (response.status === 413) {
+          throw new Error(
+            "O arquivo enviado excede o limite de 4.5 MB do proxy gratuito da Vercel. Envie um PDF/TXT/MD menor que 4.5 MB."
+          );
+        }
+        if (response.status === 404) {
+          throw new Error(
+            "Rota /api/adaptar não encontrada (404). Verifique se o commit com frontend/vercel.json já foi enviado (git push) e publicado na Vercel."
+          );
+        }
+        if (response.status === 504 || response.status === 502) {
+          throw new Error(
+            `Tempo limite do proxy da Vercel excedido (HTTP ${response.status}). Tente com um documento menor.`
+          );
+        }
         throw new Error(
-          typeof detail === "string"
-            ? detail
-            : "O servidor não conseguiu processar o documento."
+          `O servidor não conseguiu processar o documento (HTTP ${response.status}).`
         );
       }
 

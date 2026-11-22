@@ -114,6 +114,12 @@ def index_documents(
             "Duplicate chunk identifiers detected."
         )
 
+    existing = vector_store.get(
+        where={"document_id": document_id},
+    )
+    if set(existing.get("ids", [])) == set(chunk_ids):
+        return len(documents)
+
     delete_document(
         document_id=document_id,
         vector_store=vector_store,
