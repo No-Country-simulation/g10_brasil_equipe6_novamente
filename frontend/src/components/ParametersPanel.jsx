@@ -74,11 +74,17 @@ function ParametersPanel({
               {isLoadingModels ? (
                 <option value="">Detectando modelos...</option>
               ) : localModels.length > 0 ? (
-                localModels.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))
+                localModels.map((model) => {
+                  const hasVision =
+                    Array.isArray(model.capabilities) &&
+                    model.capabilities.includes("vision");
+                  return (
+                    <option key={model.name} value={model.name}>
+                      {model.name}
+                      {hasVision ? " (👁️ Visão Multimodal)" : ""}
+                    </option>
+                  );
+                })
               ) : (
                 <option value="">Nenhum modelo encontrado</option>
               )}

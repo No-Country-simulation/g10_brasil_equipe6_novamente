@@ -107,6 +107,7 @@ class FinalizarLocalRequest(BaseModel):
     formato: str
     nicho: str = "Geral"
     resposta_bruta: str | dict
+    usou_visao_local: bool = False
 
 
 @app.post("/api/finalizar-local")
@@ -120,6 +121,7 @@ def finalizar_geracao_ollama_local(dados: FinalizarLocalRequest):
         nome_ficheiro=dados.nome_ficheiro,
         perfil=dados.perfil,
         formato=dados.formato,
+        usou_visao_local=dados.usou_visao_local,
     )
     if resposta.get("status") != "sucesso":
         msg_erro = str(resposta.get("mensagem", "Erro na validação da resposta do modelo local."))

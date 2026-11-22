@@ -9,13 +9,13 @@ function UploadDocument({ onFileSelect }) {
   const handleFile = (selectedFile) => {
     if (!selectedFile) return;
 
-    const allowedTypes = [".pdf", ".md", ".txt"];
+    const allowedTypes = [".pdf", ".md", ".txt", ".png", ".jpg", ".jpeg", ".webp"];
     const extension = selectedFile.name
       .slice(selectedFile.name.lastIndexOf("."))
       .toLowerCase();
 
     if (!allowedTypes.includes(extension)) {
-      alert("Formato inválido! Envie PDF, MD ou TXT.");
+      alert("Formato inválido! Envie PDF, MD, TXT ou Imagem de Diagrama (PNG, JPG, WEBP).");
       return;
     }
 
@@ -43,7 +43,7 @@ function UploadDocument({ onFileSelect }) {
         </h2>
 
         <p className="mt-2 text-sm text-gray-400">
-          Formatos suportados: PDF, MD, TXT
+          Formatos suportados: PDF, MD, TXT e Diagramas (PNG, JPG, WEBP)
         </p>
       </div>
 
@@ -64,7 +64,7 @@ function UploadDocument({ onFileSelect }) {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.md,.txt"
+          accept=".pdf,.md,.txt,.png,.jpg,.jpeg,.webp"
           className="hidden"
           onChange={(event) => handleFile(event.target.files[0])}
         />

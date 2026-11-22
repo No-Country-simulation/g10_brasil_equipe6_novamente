@@ -1,5 +1,12 @@
-from src.rag.document_loader import DocumentLoadingError
+from src.rag.document_loader import (
+    DocumentLoadingError,
+    extrair_diagramas_documento,
+)
 from src.rag.pipeline import RAGPipeline
+
+# Cache em memória dos diagramas extraídos por nome de arquivo
+_CACHE_DIAGRAMAS: dict[str, list[dict]] = {}
+
 
 def processar_e_indexar_documento(arquivo_bytes: bytes, nome_arquivo: str) -> bool:
     """
@@ -13,7 +20,12 @@ def processar_e_indexar_documento(arquivo_bytes: bytes, nome_arquivo: str) -> bo
             filename=nome_arquivo,
             document_id=nome_arquivo # <-- A MUDANÇA CRÍTICA AQUI (Amarra o ID ao nome do arquivo)
         )
-        print(f"[RAG] Sucesso: {resultado.chunk_count} chunks indexados do arquivo {nome_arquivo}")
+        diagramas = extrair_diagramas_documento(arquivo_bytes, nome_arquivo)
+        _CACHE_DIAGRAMAS[nome_arquivo] = diagramas
+        print(
+            f"[RAG] Sucesso: {resultado.chunk_count} chunks e "
+            f"{len(diagramas)} diagramas extraídos de {nome_arquivo}"
+        )
         return resultado.chunk_count > 0
     except (DocumentLoadingError, ValueError) as e:
         print(f"[RAG] Erro de validação/leitura do documento: {e}")
@@ -21,6 +33,11 @@ def processar_e_indexar_documento(arquivo_bytes: bytes, nome_arquivo: str) -> bo
     except Exception as e:
         print(f"[RAG] Erro ao processar documento: {e}")
         return False
+
+
+def recuperar_diagramas(nome_arquivo: str) -> list[dict]:
+    """Retorna os diagramas técnicos extraídos do documento (se houver)."""
+    return list(_CACHE_DIAGRAMAS.get(nome_arquivo, []))
 
 def recuperar_contexto(query: str, nome_arquivo: str, k: int = 6) -> str:
     """

@@ -164,6 +164,31 @@ function App() {
         }
 
         // 2. Navegador do visitante chama o Ollama instalado no próprio PC dele (localhost:11434)
+        const selectedModelObj = localModels.find(
+          (m) => m.name === parameters.localModel
+        );
+        const modelSupportsVision =
+          (Array.isArray(selectedModelObj?.capabilities) &&
+            selectedModelObj.capabilities.includes("vision")) ||
+          /llava|vision|moondream|bakllava|minicpm-v|qwen2\.5-vl/i.test(
+            parameters.localModel
+          );
+
+        const diagramImagesBase64 =
+          modelSupportsVision && Array.isArray(ragData.diagramas_extraidos)
+            ? ragData.diagramas_extraidos
+                .map((d) => d.base64)
+                .filter(Boolean)
+            : [];
+
+        const userMessageObj = {
+          role: "user",
+          content: ragData.user_prompt,
+        };
+        if (diagramImagesBase64.length > 0) {
+          userMessageObj.images = diagramImagesBase64;
+        }
+
         const ollamaResponse = await fetch("http://localhost:11434/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -171,7 +196,7 @@ function App() {
             model: parameters.localModel,
             messages: [
               { role: "system", content: ragData.system_prompt },
-              { role: "user", content: ragData.user_prompt },
+              userMessageObj,
             ],
             format: "json",
             stream: false,
@@ -201,6 +226,7 @@ function App() {
             formato: parameters.format,
             nicho: parameters.niche,
             resposta_bruta: ollamaData.message.content,
+            usou_visao_local: diagramImagesBase64.length > 0,
           }),
         });
         data = await finalResponse.json().catch(() => null);

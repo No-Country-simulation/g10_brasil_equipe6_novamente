@@ -129,6 +129,10 @@ function ResultsPanel({ parameters = {}, resultData }) {
 
   const studyTime = metadata.tempo_estimado_estudo_minutos ?? 0;
 
+  const extractedDiagrams = Array.isArray(metadata.diagramas_extraidos)
+    ? metadata.diagramas_extraidos
+    : [];
+
   const pipelineAgents =
     Array.isArray(metadata.pipeline_multiagente) &&
     metadata.pipeline_multiagente.length > 0
@@ -821,6 +825,38 @@ function ResultsPanel({ parameters = {}, resultData }) {
           ))}
         </div>
       </div>
+
+      {extractedDiagrams.length > 0 && (
+        <div className="space-y-3 rounded-xl border border-purple-500/30 bg-purple-950/15 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-purple-200">
+              🖼️ Diagramas e Figuras Técnicas Extraídos do Documento (Suporte Multimodal)
+            </h3>
+            <span className="rounded-full border border-purple-500/40 bg-purple-500/15 px-2.5 py-0.5 text-xs text-purple-300">
+              {extractedDiagrams.length}{" "}
+              {extractedDiagrams.length === 1 ? "figura analisada" : "figuras analisadas"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {extractedDiagrams.map((diag, idx) => (
+              <figure
+                key={idx}
+                className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/90 p-3"
+              >
+                <img
+                  src={diag.data_url}
+                  alt={diag.nome || `Diagrama ${idx + 1}`}
+                  className="max-h-52 w-full rounded-lg bg-zinc-950 object-contain"
+                />
+                <figcaption className="mt-2 text-center text-xs text-zinc-400">
+                  {diag.nome || `Diagrama Técnico (Página ${diag.pagina})`}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      )}
 
       {renderStudyContent()}
 
