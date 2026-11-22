@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import json
 import os
+import urllib.request
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -37,6 +38,21 @@ app.add_middleware(
 @app.get("/")
 def health_check():
     return {"status": "online", "service": "NovaMente API"}
+
+
+@app.get("/api/ollama/tags")
+def listar_modelos_ollama():
+    """Ponte para listar os modelos do Ollama (local ou via túnel SSH reverso na VM)."""
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    try:
+        req = urllib.request.Request(f"{ollama_base}/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama indisponível em {ollama_base}: {e}",
+        ) from e
 
 
 @app.post("/api/adaptar")

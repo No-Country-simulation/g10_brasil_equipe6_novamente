@@ -2,6 +2,7 @@
 
 import os
 import json
+import urllib.request
  
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -20,8 +21,38 @@ load_dotenv()
 GEMINI_FALLBACK_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-flash-latest",
 ]
+
+
+def _descobrir_modelos_gemini(api_key: str) -> list[str]:
+    """Consulta ModelService.ListModels na API v1beta para descobrir os modelos ativos na chave."""
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+        candidatos = []
+        for m in dados.get("models", []):
+            nome = m.get("name", "").replace("models/", "")
+            metodos = m.get("supportedGenerationMethods", [])
+            nome_low = nome.lower()
+            if (
+                "generateContent" in metodos
+                and "gemini" in nome_low
+                and not any(x in nome_low for x in ("tts", "image", "embedding", "veo", "aqa", "audio", "vision", "1.5"))
+            ):
+                candidatos.append(nome)
+        flashes = [c for c in candidatos if "flash" in c.lower()]
+        outros = [c for c in candidatos if c not in flashes]
+        descobertos = flashes + outros
+        if descobertos:
+            print(f"[LLM] Modelos Gemini descobertos via ListModels: {descobertos[:5]}")
+        return descobertos
+    except Exception as e:
+        print(f"[LLM] Aviso ao consultar ListModels do Gemini: {e}")
+        return []
 
 
 def get_llm(
@@ -31,10 +62,12 @@ def get_llm(
 ) -> ChatGoogleGenerativeAI | ChatOllama:
     # Lê a flag do ambiente configurada pela API
     if os.getenv("USE_LOCAL_LLM", "False") == "True":
-        # Lê o nome do modelo dinamicamente
+        # Lê o nome do modelo e base_url dinamicamente (suporta túnel SSH reverso para GPU local)
         modelo_local = model_override or os.getenv("OLLAMA_MODEL", "llama3.1")
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         return ChatOllama(
             model=modelo_local,
+            base_url=ollama_base_url,
             temperature=temperature,
             format="json" if json_mode else "",
         )
@@ -354,13 +387,21 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
 
     modelos_tentativa: list[str | None] = [None]
     if os.getenv("USE_LOCAL_LLM", "False") != "True":
-        atual = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        modelos_tentativa = [atual] + [m for m in GEMINI_FALLBACK_MODELS if m != atual]
+        api_key = os.getenv("GOOGLE_API_KEY", "")
+        descobertos = _descobrir_modelos_gemini(api_key) if api_key else []
+        if descobertos:
+            modelos_tentativa = descobertos[:4]
+        else:
+            atual = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            if "1.5" in atual:
+                atual = "gemini-2.5-flash"
+            modelos_tentativa = [atual] + [m for m in GEMINI_FALLBACK_MODELS if m != atual]
 
-    ultimo_erro: Exception | None = None
+    primeiro_erro: Exception | None = None
     saida: SaidaLLM | None = None
     for modelo in modelos_tentativa:
         try:
+            print(f"[LLM] Invocando modelo: {modelo or os.getenv('OLLAMA_MODEL', 'local')}")
             bruto = criar_chain_json(model_override=modelo).invoke(payload)
             bruto_normalizado = _normalizar_saida_bruta(
                 bruto=bruto,
@@ -369,19 +410,21 @@ def gerar_conteudo(nome_ficheiro: str, perfil: str, formato: str, nicho: str,
                 formato=formato,
             )
             saida = SaidaLLM.model_validate(bruto_normalizado)
-            ultimo_erro = None
+            primeiro_erro = None
             break
         except (OutputParserException, ValidationError) as e:
             return {"status": "erro", "mensagem": f"O modelo não devolveu um JSON válido: {e}"}
         except Exception as e:
-            ultimo_erro = e
+            print(f"[LLM] Erro no modelo {modelo}: {e}")
+            if primeiro_erro is None:
+                primeiro_erro = e
             msg = str(e).lower()
-            if "not_found" in msg or "404" in msg or "not found" in msg:
+            if "not_found" in msg or "404" in msg or "not found" in msg or "503" in msg or "429" in msg or "quota" in msg:
                 continue
             break
 
-    if ultimo_erro is not None or saida is None:
-        return {"status": "erro", "mensagem": f"Falha ao chamar o modelo: {ultimo_erro}"}
+    if primeiro_erro is not None or saida is None:
+        return {"status": "erro", "mensagem": f"Falha ao chamar o modelo: {primeiro_erro}"}
  
     # Sem itens = o documento não trouxe informação suficiente (regra 7 do prompt).
     if not saida.conteudo_adaptado.itens:

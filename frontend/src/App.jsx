@@ -22,6 +22,8 @@ const API_URL = RESOLVED_API_URL.endsWith("/api/adaptar")
   ? RESOLVED_API_URL
   : `${RESOLVED_API_URL}/api/adaptar`;
 
+const OLLAMA_TAGS_PROXY_URL = API_URL.replace(/\/api\/adaptar$/, "/api/ollama/tags");
+
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [resultData, setResultData] = useState(null);
@@ -61,10 +63,17 @@ function App() {
       setLocalModels([]);
 
       try {
-        const response = await fetch(
-          "http://localhost:11434/api/tags",
+        let response = await fetch(
+          OLLAMA_TAGS_PROXY_URL,
           { signal: controller.signal }
-        );
+        ).catch(() => null);
+
+        if (!response || !response.ok) {
+          response = await fetch(
+            "http://localhost:11434/api/tags",
+            { signal: controller.signal }
+          );
+        }
 
         if (!response.ok) {
           throw new Error("Ollama indisponível");
