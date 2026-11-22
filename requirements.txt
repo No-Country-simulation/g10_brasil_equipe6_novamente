@@ -11,8 +11,9 @@ langchain-google-genai
 langchain-ollama
 langgraph
 
-# RAG - Document Processing
+# RAG - Document Processing & Multimodal Diagrams
 pypdf
+Pillow
 langchain-text-splitters
 
 # RAG - Embeddings

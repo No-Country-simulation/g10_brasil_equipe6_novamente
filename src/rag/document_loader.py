@@ -8,8 +8,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from langchain_core.documents import Document
-from PIL import Image
 from pypdf import PdfReader
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None  # type: ignore[assignment]
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -66,26 +70,37 @@ def load_document(
 
 def _comprimir_imagem_para_base64(raw_bytes: bytes, max_side: int = 768) -> tuple[str, int, int] | None:
     """Converte bytes de imagem para JPEG RGB redimensionado em Base64."""
-    try:
-        with Image.open(BytesIO(raw_bytes)) as img:
-            width, height = img.size
-            # Ignora ícones muito pequenos ou faixas/banners estreitos
-            if width < 160 or height < 120:
-                return None
-            aspect = max(width / max(height, 1), height / max(width, 1))
-            if aspect > 5.5:
-                return None
-
-            rgb_img = img.convert("RGB")
-            if max(width, height) > max_side:
-                rgb_img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-
-            out = BytesIO()
-            rgb_img.save(out, format="JPEG", quality=75, optimize=True)
-            b64_str = base64.b64encode(out.getvalue()).decode("ascii")
-            return b64_str, rgb_img.width, rgb_img.height
-    except Exception:
+    if not raw_bytes:
         return None
+
+    if Image is not None:
+        try:
+            with Image.open(BytesIO(raw_bytes)) as img:
+                width, height = img.size
+                # Ignora ícones muito pequenos ou faixas/banners estreitos
+                if width < 160 or height < 120:
+                    return None
+                aspect = max(width / max(height, 1), height / max(width, 1))
+                if aspect > 5.5:
+                    return None
+
+                rgb_img = img.convert("RGB")
+                if max(width, height) > max_side:
+                    rgb_img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+
+                out = BytesIO()
+                rgb_img.save(out, format="JPEG", quality=75, optimize=True)
+                b64_str = base64.b64encode(out.getvalue()).decode("ascii")
+                return b64_str, rgb_img.width, rgb_img.height
+        except Exception:
+            return None
+
+    # Fallback puro em Python caso Pillow não esteja disponível (suporta JPEG e PNG nativos)
+    if raw_bytes.startswith(b"\xff\xd8\xff") or raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        if len(raw_bytes) > 1_500_000:
+            return None
+        return base64.b64encode(raw_bytes).decode("ascii"), 640, 480
+    return None
 
 
 def extrair_diagramas_documento(
