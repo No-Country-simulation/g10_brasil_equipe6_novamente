@@ -34,6 +34,9 @@ function App() {
   const [resultData, setResultData] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [apiError, setApiError] = useState("");
 
   const [parameters, setParameters] = useState({
@@ -55,6 +58,28 @@ function App() {
       [field]: value,
     }));
   };
+
+  // Cronômetro e avanço suave da barra de progresso durante a geração
+  useEffect(() => {
+    if (!isGenerating) return;
+
+    const timer = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+      setProgressPercent((prev) => {
+        if (prev >= 94) return prev;
+        const stepIncrement = prev < 45 ? 4 : prev < 78 ? 2 : 1;
+        return Math.min(94, prev + stepIncrement);
+      });
+      if (parameters.engine === "Nuvem") {
+        setGenerationStep((prev) => {
+          if (prev === 1) return 2;
+          return prev;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isGenerating, parameters.engine]);
 
   // Detecta os modelos instalados no Ollama
   useEffect(() => {
@@ -134,6 +159,9 @@ function App() {
     if (!canGenerate) return;
 
     setIsGenerating(true);
+    setGenerationStep(1);
+    setProgressPercent(12);
+    setElapsedSeconds(0);
     setShowResults(false);
     setResultData(null);
     setApiError("");
@@ -150,6 +178,8 @@ function App() {
 
       if (parameters.engine === "Local") {
         // 1. Backend na OCI indexa o documento no RAG (ChromaDB) e devolve os prompts
+        setGenerationStep(1);
+        setProgressPercent(20);
         const ragResponse = await fetch(API_PREPARAR_RAG_URL, {
           method: "POST",
           body: formData,
@@ -164,6 +194,8 @@ function App() {
         }
 
         // 2. Navegador do visitante chama o Ollama instalado no próprio PC dele (localhost:11434)
+        setGenerationStep(2);
+        setProgressPercent((prev) => Math.max(prev, 52));
         const selectedModelObj = localModels.find(
           (m) => m.name === parameters.localModel
         );
@@ -218,6 +250,8 @@ function App() {
         }
 
         // 3. Backend na OCI valida/normaliza o JSON (SaidaLLM) e salva a evidência no Bucket da OCI
+        setGenerationStep(3);
+        setProgressPercent((prev) => Math.max(prev, 88));
         const finalResponse = await fetch(API_FINALIZAR_LOCAL_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -283,6 +317,8 @@ function App() {
         );
       }
 
+      setGenerationStep(3);
+      setProgressPercent(100);
       setResultData(data);
       setShowResults(true);
     } catch (error) {
@@ -338,11 +374,16 @@ function App() {
             type="button"
             disabled={!canGenerate}
             onClick={handleGenerate}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-lg shadow-purple-900/20 transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+            className="flex w-full items-center justify-center gap-3 rounded-xl bg-purple-600 px-6 py-4 font-semibold text-white shadow-lg shadow-purple-900/20 transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
           >
-            {isGenerating
-              ? "Gerando seu material..."
-              : "✨ Gerar conteúdo educacional"}
+            {isGenerating ? (
+              <>
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                <span>Orquestrando Multi-Agentes... ({elapsedSeconds}s)</span>
+              </>
+            ) : (
+              "✨ Gerar conteúdo educacional"
+            )}
           </button>
 
           {!selectedFile && (
@@ -365,6 +406,90 @@ function App() {
               </p>
             )}
         </div>
+
+        {isGenerating && (
+          <section className="space-y-4 rounded-2xl border border-purple-500/30 bg-zinc-900/80 p-5 shadow-lg shadow-purple-950/20">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-purple-400/30 border-t-purple-400" />
+                <div>
+                  <h3 className="text-sm font-semibold text-white">
+                    {generationStep === 1 &&
+                      "Etapa 1/3 — Agente Pesquisador RAG & Extração Multimodal..."}
+                    {generationStep === 2 &&
+                      (parameters.engine === "Local"
+                        ? `Etapa 2/3 — Agente Redator Pedagógico rodando na sua GPU (${parameters.localModel})...`
+                        : "Etapa 2/3 — Agente Redator Pedagógico adaptando conteúdo no Google Gemini...")}
+                    {generationStep >= 3 &&
+                      "Etapa 3/3 — Agente Crítico / Revisor validando JSON e salvando evidência no Bucket OCI..."}
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    Processando &ldquo;{selectedFile?.name}&rdquo; para o perfil{" "}
+                    <strong className="text-purple-300">{parameters.profile}</strong> no formato{" "}
+                    <strong className="text-purple-300">{parameters.format}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-300">
+                {progressPercent}% · {elapsedSeconds}s
+              </span>
+            </div>
+
+            {/* Barra de progresso animada */}
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-400 transition-all duration-500 ease-out"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            {/* Checkpoints dos 3 Agentes */}
+            <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-3">
+              {[
+                {
+                  step: 1,
+                  title: "1. Pesquisador RAG & OCR",
+                  desc: "Leitura, diagramas e ChromaDB",
+                },
+                {
+                  step: 2,
+                  title: "2. Redator Pedagógico",
+                  desc:
+                    parameters.engine === "Local"
+                      ? `Inferência em ${parameters.localModel}`
+                      : "Adaptação no Google Gemini",
+                },
+                {
+                  step: 3,
+                  title: "3. Crítico & Bucket OCI",
+                  desc: "Validação Pydantic e evidência",
+                },
+              ].map((item) => {
+                const isDone = generationStep > item.step;
+                const isActive = generationStep === item.step;
+                return (
+                  <div
+                    key={item.step}
+                    className={`rounded-xl border p-3 text-xs transition ${
+                      isDone
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                        : isActive
+                          ? "border-purple-500/50 bg-purple-500/15 text-white"
+                          : "border-zinc-800 bg-zinc-900/40 text-zinc-500"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>{item.title}</span>
+                      <span>{isDone ? "✓" : isActive ? "⏳" : "○"}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] opacity-80">{item.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {apiError && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
