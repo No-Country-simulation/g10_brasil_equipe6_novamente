@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 from io import BytesIO
 from pathlib import Path
+import shutil
+import subprocess
 from uuid import uuid4
 
 from langchain_core.documents import Document
@@ -103,6 +105,38 @@ def _comprimir_imagem_para_base64(raw_bytes: bytes, max_side: int = 768) -> tupl
     return None
 
 
+def _ocr_imagem_bytes(raw_bytes: bytes) -> str:
+    """Executa OCR leve via binário tesseract (se disponível) sobre bytes de imagem."""
+    if not raw_bytes or not shutil.which("tesseract"):
+        return ""
+    try:
+        img_input = raw_bytes
+        if Image is not None:
+            with Image.open(BytesIO(raw_bytes)) as img:
+                rgb = img.convert("RGB")
+                if max(rgb.width, rgb.height) > 1600:
+                    rgb.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+                buf = BytesIO()
+                rgb.save(buf, format="PNG")
+                img_input = buf.getvalue()
+
+        for lang in ("por+eng", "por", "eng"):
+            proc = subprocess.run(
+                ["tesseract", "stdin", "stdout", "-l", lang, "--psm", "6"],
+                input=img_input,
+                capture_output=True,
+                timeout=12,
+                check=False,
+            )
+            if proc.returncode == 0:
+                texto = proc.stdout.decode("utf-8", errors="ignore").strip()
+                if texto:
+                    return texto
+    except Exception as e:
+        print(f"[OCR] Aviso ao executar tesseract: {e}")
+    return ""
+
+
 def extrair_diagramas_documento(
     content: bytes,
     filename: str,
@@ -165,6 +199,7 @@ def extrair_diagramas_documento(
 
                 hashes_vistos.add(assinatura)
                 b64_str, w, h = convertido
+                legenda_pagina = texto_pagina or _ocr_imagem_bytes(raw_data)
                 diagramas.append(
                     {
                         "pagina": page_index + 1,
@@ -173,7 +208,7 @@ def extrair_diagramas_documento(
                         "altura": h,
                         "base64": b64_str,
                         "data_url": f"data:image/jpeg;base64,{b64_str}",
-                        "texto_pagina": texto_pagina[:900],
+                        "texto_pagina": legenda_pagina[:900],
                     }
                 )
     except Exception as e:
@@ -187,19 +222,25 @@ def _load_image_document(
     filename: str,
     document_id: str,
 ) -> list[Document]:
-    """Cria um Document indexável para imagens de diagramas enviadas diretamente."""
+    """Cria um Document indexável para imagens de diagramas enviadas diretamente (com OCR)."""
     convertido = _comprimir_imagem_para_base64(content)
     if not convertido:
         raise DocumentLoadingError(f"Imagem inválida ou muito pequena: {filename}")
     _, w, h = convertido
     extension = Path(filename).suffix.lower().lstrip(".")
+    texto_ocr = _ocr_imagem_bytes(content)
+    conteudo_doc = (
+        f"Texto e rótulos extraídos do diagrama '{filename}':\n{texto_ocr}"
+        if texto_ocr
+        else (
+            f"Diagrama técnico visual enviado no arquivo de imagem '{filename}' "
+            f"(dimensões {w}x{h}px). Analise visualmente os componentes, conexões, "
+            f"setas, rótulos e arquitetura representados na imagem do diagrama."
+        )
+    )
     return [
         Document(
-            page_content=(
-                f"Diagrama técnico visual enviado no arquivo de imagem '{filename}' "
-                f"(dimensões {w}x{h}px). Analise visualmente os componentes, conexões, "
-                f"setas, rótulos e arquitetura representados na imagem do diagrama."
-            ),
+            page_content=conteudo_doc,
             metadata={
                 "document_id": document_id,
                 "source": filename,
@@ -216,10 +257,11 @@ def _load_pdf(
     filename: str,
     document_id: str,
 ) -> list[Document]:
-    """Extract text from PDF pages."""
+    """Extract text from PDF pages (with automatic OCR fallback for slide/scanned PDFs)."""
     try:
         reader = PdfReader(BytesIO(content))
         documents = []
+        total_pages = len(reader.pages)
 
         for page_index, page in enumerate(reader.pages):
             text = page.extract_text() or ""
@@ -235,10 +277,39 @@ def _load_pdf(
                         "source": filename,
                         "file_type": "pdf",
                         "page": page_index + 1,
-                        "total_pages": len(reader.pages),
+                        "total_pages": total_pages,
                     },
                 )
             )
+
+        # Fallback Multimodal / OCR para PDFs de slides ou digitalizados (sem camada de texto)
+        if not documents:
+            for page_index, page in enumerate(reader.pages[:15]):
+                try:
+                    page_images = list(page.images)
+                except Exception:
+                    continue
+                textos_ocr_pagina = []
+                for img_file in page_images:
+                    raw_data = getattr(img_file, "data", b"")
+                    if not raw_data or len(raw_data) < 10000:
+                        continue
+                    ocr_txt = _ocr_imagem_bytes(raw_data)
+                    if ocr_txt:
+                        textos_ocr_pagina.append(ocr_txt)
+                if textos_ocr_pagina:
+                    documents.append(
+                        Document(
+                            page_content="\n\n".join(textos_ocr_pagina),
+                            metadata={
+                                "document_id": document_id,
+                                "source": filename,
+                                "file_type": "pdf",
+                                "page": page_index + 1,
+                                "total_pages": total_pages,
+                            },
+                        )
+                    )
 
         if not documents:
             raise DocumentLoadingError(
