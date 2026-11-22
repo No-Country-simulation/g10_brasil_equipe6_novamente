@@ -37,7 +37,7 @@ def _emulator_fallback_config() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _client() -> oci.object_storage.ObjectStorageClient:
     """Retorna o cliente autenticado do Object Storage."""
-    endpoint = os.getenv("OCI_ENDPOINT")
+    endpoint = (os.getenv("OCI_ENDPOINT") or "").strip() or None
     config_path = Path(os.getenv("OCI_CONFIG_FILE", "~/.oci/config")).expanduser()
 
     if config_path.exists():

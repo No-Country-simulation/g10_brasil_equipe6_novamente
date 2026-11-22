@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Instala via requirements.txt de forma isolada
-RUN pip install --no-cache-dir -r requirements.txt
+# Instala via requirements.txt de forma isolada (usando wheel CPU-only do PyTorch para reduzir ~2GB de imagem)
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 
 # Camada 2: Runtime (Execução Final)
