@@ -17,6 +17,14 @@ try:
 except ImportError:
     Image = None  # type: ignore[assignment]
 
+try:
+    import pymupdf as fitz  # PyMuPDF >= 1.24 / 2.x
+except ImportError:
+    try:
+        import fitz  # type: ignore[no-redef]
+    except ImportError:
+        fitz = None  # type: ignore[assignment]
+
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 SUPPORTED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"} | IMAGE_EXTENSIONS
@@ -70,8 +78,17 @@ def load_document(
     return _load_text(content, filename, document_id)
 
 
-def _comprimir_imagem_para_base64(raw_bytes: bytes, max_side: int = 768) -> tuple[str, int, int] | None:
-    """Converte bytes de imagem para JPEG RGB redimensionado em Base64."""
+def _comprimir_imagem_para_base64(
+    raw_bytes: bytes,
+    max_side: int = 960,
+    min_width: int = 160,
+    min_height: int = 120,
+    max_aspect: float = 4.5,
+) -> tuple[str, int, int, bool] | None:
+    """Converte bytes de imagem para JPEG RGB (com fundo branco se houver transparência) em Base64.
+
+    Retorna `(b64_str, largura, altura, tinha_transparencia)` ou `None` se rejeitada.
+    """
     if not raw_bytes:
         return None
 
@@ -80,20 +97,30 @@ def _comprimir_imagem_para_base64(raw_bytes: bytes, max_side: int = 768) -> tupl
             with Image.open(BytesIO(raw_bytes)) as img:
                 width, height = img.size
                 # Ignora ícones muito pequenos ou faixas/banners estreitos
-                if width < 160 or height < 120:
+                if width < min_width or height < min_height:
                     return None
                 aspect = max(width / max(height, 1), height / max(width, 1))
-                if aspect > 5.5:
+                if aspect > max_aspect:
                     return None
 
-                rgb_img = img.convert("RGB")
+                tinha_transparencia = img.mode in ("RGBA", "LA") or (
+                    img.mode == "P" and "transparency" in img.info
+                )
+                if tinha_transparencia:
+                    rgba = img.convert("RGBA")
+                    fundo_branco = Image.new("RGB", rgba.size, (255, 255, 255))
+                    fundo_branco.paste(rgba, mask=rgba.split()[3])
+                    rgb_img = fundo_branco
+                else:
+                    rgb_img = img.convert("RGB")
+
                 if max(width, height) > max_side:
                     rgb_img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
 
                 out = BytesIO()
-                rgb_img.save(out, format="JPEG", quality=75, optimize=True)
+                rgb_img.save(out, format="JPEG", quality=82, optimize=True)
                 b64_str = base64.b64encode(out.getvalue()).decode("ascii")
-                return b64_str, rgb_img.width, rgb_img.height
+                return b64_str, rgb_img.width, rgb_img.height, tinha_transparencia
         except Exception:
             return None
 
@@ -101,7 +128,7 @@ def _comprimir_imagem_para_base64(raw_bytes: bytes, max_side: int = 768) -> tupl
     if raw_bytes.startswith(b"\xff\xd8\xff") or raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         if len(raw_bytes) > 1_500_000:
             return None
-        return base64.b64encode(raw_bytes).decode("ascii"), 640, 480
+        return base64.b64encode(raw_bytes).decode("ascii"), 640, 480, False
     return None
 
 
@@ -137,15 +164,207 @@ def _ocr_imagem_bytes(raw_bytes: bytes) -> str:
     return ""
 
 
+_PALAVRAS_PAGINA_ESTRUTURAL = (
+    "safe harbor",
+    "agenda",
+    "table of contents",
+    "sumário",
+    "índice",
+    "thank you",
+    "obrigado",
+    "obrigada",
+    "questions?",
+    "dúvidas?",
+    "all rights reserved",
+    "confidential",
+)
+
+_PALAVRAS_TECNICAS_DIAGRAMA = (
+    "architecture",
+    "arquitetura",
+    "diagram",
+    "diagrama",
+    "figure",
+    "figura",
+    "fig.",
+    "flow",
+    "fluxo",
+    "pipeline",
+    "network",
+    "subnet",
+    "vcn",
+    "vnic",
+    "cluster",
+    "node",
+    "pod",
+    "container",
+    "kubernetes",
+    "hypervisor",
+    "scaling",
+    "autoscaling",
+    "instance",
+    "storage",
+    "database",
+    "server",
+    "gateway",
+    "api",
+    "layer",
+    "camada",
+    "sistema",
+    "modelo",
+    "componentes",
+)
+
+
+def _eh_pagina_estrutural(page_index: int, total_pages: int, texto_pagina: str) -> bool:
+    """Identifica capas, contracapas, avisos legais, sumários e slides de encerramento."""
+    texto_norm = " ".join(texto_pagina.lower().split())
+    if total_pages >= 3:
+        # Capa (página 1) com pouco texto técnico
+        if page_index == 0 and len(texto_norm) < 280:
+            return True
+        # Última página (encerramento / Thank you / créditos)
+        if page_index == total_pages - 1 and len(texto_norm) < 350:
+            return True
+
+    if any(termo in texto_norm for termo in _PALAVRAS_PAGINA_ESTRUTURAL) and len(texto_norm) < 650:
+        return True
+
+    # Slide de Summary / Resumo puramente em tópicos curtos
+    if (texto_norm.startswith("summary") or texto_norm.startswith("resumo")) and len(texto_norm) < 220:
+        return True
+
+    return False
+
+
+def _bonus_contexto_tecnico(texto_pagina: str) -> float:
+    """Calcula pontuação semântica leve baseada em vocabulário técnico presente na página."""
+    texto_norm = texto_pagina.lower()
+    acertos = sum(1 for termo in _PALAVRAS_TECNICAS_DIAGRAMA if termo in texto_norm)
+    return min(acertos * 6.0, 30.0)
+
+
+def _coletar_candidatas_vetoriais_pymupdf(
+    content: bytes,
+    max_paginas_busca: int,
+    max_renderizar: int = 4,
+) -> list[dict]:
+    """Detecta páginas ricas em diagramas vetoriais (ex.: slides/arquiteturas) via PyMuPDF."""
+    if fitz is None:
+        return []
+
+    candidatas: list[dict] = []
+    try:
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            total_pages = len(doc)
+            limite = min(total_pages, max_paginas_busca)
+            pontuacoes_paginas: list[tuple[float, int, str, int, int]] = []
+
+            for page_index in range(limite):
+                page = doc[page_index]
+                texto_pagina = (page.get_text("text") or "").strip()
+                if _eh_pagina_estrutural(page_index, total_pages, texto_pagina):
+                    continue
+
+                rect = page.rect
+                area_pagina = max(rect.width * rect.height, 1.0)
+                top_margin = rect.y0 + rect.height * 0.09
+                bottom_margin = rect.y1 - rect.height * 0.08
+
+                drawings = page.get_drawings() or []
+                interior_rects = []
+                n_drawings_relevantes = 0
+                for d in drawings:
+                    dr = d.get("rect")
+                    if dr is None:
+                        continue
+                    # Ignora faixas de cabeçalho/rodapé e micro-artefatos
+                    if dr.y1 <= top_margin or dr.y0 >= bottom_margin:
+                        continue
+                    if dr.width < 4 and dr.height < 4:
+                        continue
+                    # Ignora retângulo de fundo cobrindo a página inteira
+                    if (dr.width * dr.height) / area_pagina > 0.88:
+                        continue
+                    n_drawings_relevantes += 1
+                    interior_rects.append(dr)
+
+                if n_drawings_relevantes < 16 or not interior_rects:
+                    continue
+
+                # Calcula área coberta pelos elementos vetoriais do miolo
+                x0 = min(r.x0 for r in interior_rects)
+                y0 = min(r.y0 for r in interior_rects)
+                x1 = max(r.x1 for r in interior_rects)
+                y1 = max(r.y1 for r in interior_rects)
+                cobertura = max(0.0, (x1 - x0) * (y1 - y0)) / area_pagina
+                if cobertura < 0.14:
+                    continue
+
+                # Conta rótulos curtos (típicos de caixas/setas de diagramas)
+                blocos = page.get_text("blocks") or []
+                rotulos_curtos = 0
+                for b in blocos:
+                    txt_b = (b[4] or "").strip() if len(b) > 4 else ""
+                    if 2 <= len(txt_b) <= 45:
+                        rotulos_curtos += 1
+
+                # Conta imagens raster grandes já presentes na página (ex.: screenshots de tabelas)
+                n_imgs = len(page.get_images(full=False) or [])
+
+                score = (
+                    42.0
+                    + min(n_drawings_relevantes * 0.75, 38.0)
+                    + min(cobertura * 45.0, 26.0)
+                    + min(rotulos_curtos * 2.5, 22.0)
+                    + _bonus_contexto_tecnico(texto_pagina)
+                    + (8.0 if n_imgs >= 1 else 0.0)
+                )
+                pontuacoes_paginas.append(
+                    (score, page_index, texto_pagina, n_drawings_relevantes, rotulos_curtos)
+                )
+
+            pontuacoes_paginas.sort(key=lambda item: item[0], reverse=True)
+
+            for score, page_index, texto_pagina, _, _ in pontuacoes_paginas[:max_renderizar]:
+                page = doc[page_index]
+                # Renderiza com fundo branco (alpha=False) em resolução nítida e leve
+                pix = page.get_pixmap(dpi=150, alpha=False)
+                raw_png = pix.tobytes("png")
+                convertido = _comprimir_imagem_para_base64(
+                    raw_png, max_side=1024, min_width=200, min_height=140, max_aspect=4.5
+                )
+                if not convertido:
+                    continue
+                b64_str, w, h, _ = convertido
+                candidatas.append(
+                    {
+                        "score": score,
+                        "pagina": page_index + 1,
+                        "origem": "vetorial",
+                        "largura": w,
+                        "altura": h,
+                        "base64": b64_str,
+                        "data_url": f"data:image/jpeg;base64,{b64_str}",
+                        "texto_pagina": texto_pagina[:900],
+                    }
+                )
+    except Exception as e:
+        print(f"[Multimodal] Aviso ao analisar diagramas vetoriais via PyMuPDF: {e}")
+
+    return candidatas
+
+
 def extrair_diagramas_documento(
     content: bytes,
     filename: str,
     max_imagens: int = 2,
-    max_paginas_busca: int = 15,
+    max_paginas_busca: int = 25,
 ) -> list[dict]:
     """
-    Extrai até `max_imagens` diagramas/figuras relevantes de um PDF ou arquivo de imagem,
-    retornando Base64 JPEG leve + texto/legenda da página correspondente.
+    Extrai até `max_imagens` diagramas/figuras técnicas mais relevantes de um PDF ou imagem,
+    combinando ranqueamento de imagens raster (descartando capas/logos repetidos) e
+    renderização de páginas com diagramas vetoriais (via PyMuPDF), retornando Base64 JPEG.
     """
     extension = Path(filename).suffix.lower()
 
@@ -153,7 +372,7 @@ def extrair_diagramas_documento(
         convertido = _comprimir_imagem_para_base64(content)
         if not convertido:
             return []
-        b64_str, w, h = convertido
+        b64_str, w, h, _ = convertido
         return [
             {
                 "pagina": 1,
@@ -169,41 +388,87 @@ def extrair_diagramas_documento(
     if extension != ".pdf":
         return []
 
-    diagramas: list[dict] = []
-    hashes_vistos: set[int] = set()
+    candidatas: list[dict] = []
     try:
         reader = PdfReader(BytesIO(content))
-        for page_index, page in enumerate(reader.pages[:max_paginas_busca]):
-            if len(diagramas) >= max_imagens:
-                break
+        total_pages = len(reader.pages)
+        paginas_alvo = list(reader.pages[:max_paginas_busca])
+
+        # Passo 1: identifica assinaturas repetidas entre páginas (logos, cabeçalhos, rodapés)
+        ocorrencias_assinatura: dict[int, set[int]] = {}
+        imagens_por_pagina: list[tuple[int, str, list[bytes]]] = []
+
+        for page_index, page in enumerate(paginas_alvo):
+            texto_pagina = (page.extract_text() or "").strip()
             try:
                 imagens_pagina = list(page.images)
             except Exception:
-                continue
+                imagens_pagina = []
 
-            texto_pagina = (page.extract_text() or "").strip()
-            for img_idx, img_file in enumerate(imagens_pagina):
-                if len(diagramas) >= max_imagens:
-                    break
+            raws_pagina: list[bytes] = []
+            for img_file in imagens_pagina:
                 raw_data = getattr(img_file, "data", b"")
-                # Filtra logos/ícones pequenos (< 18 KB)
                 if not raw_data or len(raw_data) < 18000:
                     continue
                 assinatura = hash(raw_data[:4096]) ^ len(raw_data)
-                if assinatura in hashes_vistos:
+                ocorrencias_assinatura.setdefault(assinatura, set()).add(page_index)
+                raws_pagina.append(raw_data)
+
+            imagens_por_pagina.append((page_index, texto_pagina, raws_pagina))
+
+        # Passo 2: pontua candidatas raster únicas (sem parar na página 1)
+        hashes_avaliados: set[int] = set()
+        for page_index, texto_pagina, raws_pagina in imagens_por_pagina:
+            eh_estrutural = _eh_pagina_estrutural(page_index, total_pages, texto_pagina)
+            for raw_data in raws_pagina:
+                assinatura = hash(raw_data[:4096]) ^ len(raw_data)
+                if assinatura in hashes_avaliados:
+                    continue
+                # Descarta ativos repetidos em 2+ páginas (logos, templates, faixas)
+                if total_pages >= 3 and len(ocorrencias_assinatura.get(assinatura, set())) >= 2:
                     continue
 
-                convertido = _comprimir_imagem_para_base64(raw_data)
+                convertido = _comprimir_imagem_para_base64(
+                    raw_data, max_side=960, min_width=200, min_height=140, max_aspect=4.2
+                )
                 if not convertido:
                     continue
 
-                hashes_vistos.add(assinatura)
-                b64_str, w, h = convertido
-                legenda_pagina = texto_pagina or _ocr_imagem_bytes(raw_data)
-                diagramas.append(
+                hashes_avaliados.add(assinatura)
+                b64_str, w, h, tinha_transparencia = convertido
+                area = w * h
+                aspect = max(w / max(h, 1), h / max(w, 1))
+
+                score = 35.0
+                score += min(area / 22000.0, 28.0)
+                if 1.05 <= aspect <= 2.4:
+                    score += 10.0
+                score += _bonus_contexto_tecnico(texto_pagina)
+                if len(texto_pagina) >= 120:
+                    score += 10.0
+
+                # Penaliza fortemente capas, contracapas e arte decorativa transparente
+                if eh_estrutural:
+                    score -= 110.0
+                if tinha_transparencia:
+                    score -= 35.0 if page_index in (0, total_pages - 1) else 12.0
+
+                # Se tesseract estiver instalado, premia imagens que contêm texto/rótulos técnicos
+                ocr_txt = ""
+                if not eh_estrutural and score >= 35.0:
+                    ocr_txt = _ocr_imagem_bytes(raw_data)
+                    n_palavras_ocr = len(ocr_txt.split())
+                    if n_palavras_ocr >= 4:
+                        score += min(n_palavras_ocr * 2.0, 30.0)
+                    elif tinha_transparencia and n_palavras_ocr == 0:
+                        score -= 25.0
+
+                legenda_pagina = texto_pagina or ocr_txt
+                candidatas.append(
                     {
+                        "score": score,
                         "pagina": page_index + 1,
-                        "nome": f"Diagrama / Figura {len(diagramas) + 1} (Pág. {page_index + 1})",
+                        "origem": "raster",
                         "largura": w,
                         "altura": h,
                         "base64": b64_str,
@@ -212,7 +477,62 @@ def extrair_diagramas_documento(
                     }
                 )
     except Exception as e:
-        print(f"[Multimodal] Aviso ao extrair diagramas do PDF: {e}")
+        print(f"[Multimodal] Aviso ao extrair diagramas raster do PDF: {e}")
+
+    # Passo 3: complementa com páginas ricas em diagramas vetoriais (PyMuPDF)
+    candidatas.extend(
+        _coletar_candidatas_vetoriais_pymupdf(
+            content,
+            max_paginas_busca=max_paginas_busca,
+            max_renderizar=max(max_imagens + 2, 4),
+        )
+    )
+
+    if not candidatas:
+        return []
+
+    # Passo 4: seleciona as top `max_imagens`, priorizando páginas distintas e descartando capas quando há algo melhor
+    candidatas.sort(key=lambda item: item["score"], reverse=True)
+    positivas = [c for c in candidatas if c["score"] > 0]
+    pool = positivas if positivas else candidatas
+
+    selecionadas: list[dict] = []
+    paginas_usadas: set[int] = set()
+    for cand in pool:
+        if len(selecionadas) >= max_imagens:
+            break
+        if cand["pagina"] in paginas_usadas:
+            continue
+        paginas_usadas.add(cand["pagina"])
+        selecionadas.append(cand)
+
+    # Fallback: se só havia 1 página com várias imagens úteis, completa até max_imagens
+    if len(selecionadas) < max_imagens:
+        for cand in pool:
+            if len(selecionadas) >= max_imagens:
+                break
+            if cand not in selecionadas:
+                selecionadas.append(cand)
+
+    # Ordena por página crescente para leitura natural na interface
+    selecionadas.sort(key=lambda item: item["pagina"])
+
+    diagramas: list[dict] = []
+    for idx, item in enumerate(selecionadas, start=1):
+        rotulo_tipo = (
+            "Diagrama Técnico" if item["origem"] == "vetorial" else "Diagrama / Figura"
+        )
+        diagramas.append(
+            {
+                "pagina": item["pagina"],
+                "nome": f"{rotulo_tipo} {idx} (Pág. {item['pagina']})",
+                "largura": item["largura"],
+                "altura": item["altura"],
+                "base64": item["base64"],
+                "data_url": item["data_url"],
+                "texto_pagina": item["texto_pagina"],
+            }
+        )
 
     return diagramas
 
@@ -226,7 +546,7 @@ def _load_image_document(
     convertido = _comprimir_imagem_para_base64(content)
     if not convertido:
         raise DocumentLoadingError(f"Imagem inválida ou muito pequena: {filename}")
-    _, w, h = convertido
+    _, w, h, _ = convertido
     extension = Path(filename).suffix.lower().lstrip(".")
     texto_ocr = _ocr_imagem_bytes(content)
     conteudo_doc = (
