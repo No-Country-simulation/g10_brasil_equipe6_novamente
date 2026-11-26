@@ -43,20 +43,43 @@ function ParametersPanel({
 
         {parameters.engine === "Nuvem" && (
           <div>
-            <label className={labelClass}>API Key do Google Gemini</label>
-            <input
-              type="password"
-              autoComplete="off"
-              placeholder="Insira sua API Key"
-              value={parameters.apiKey ?? ""}
-              onChange={(event) =>
-                onParameterChange("apiKey", event.target.value)
-              }
+            <label className={labelClass}>Chave de API (Google Gemini)</label>
+            <select
               className={selectClass}
-            />
-            <p className="mt-2 text-xs text-zinc-500">
-              Sua chave será utilizada para realizar as requisições ao Gemini.
-            </p>
+              value={parameters.apiKeyMode ?? "prebuilt"}
+              onChange={(event) =>
+                onParameterChange("apiKeyMode", event.target.value)
+              }
+            >
+              <option value="prebuilt">
+                ✨ Chave integrada (Gratuito / Demo)
+              </option>
+              <option value="custom">
+                🔑 Usar minha própria API Key
+              </option>
+            </select>
+
+            {(parameters.apiKeyMode ?? "prebuilt") === "custom" ? (
+              <>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Insira sua API Key"
+                  value={parameters.apiKey ?? ""}
+                  onChange={(event) =>
+                    onParameterChange("apiKey", event.target.value)
+                  }
+                  className={selectClass}
+                />
+                <p className="mt-2 text-xs text-zinc-500">
+                  Sua chave será utilizada apenas nesta requisição ao Gemini.
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-400/90">
+                Pronto para uso com a chave integrada do servidor — sem precisar criar conta ou gerar chave.
+              </p>
+            )}
           </div>
         )}
 

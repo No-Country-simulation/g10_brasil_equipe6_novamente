@@ -39,7 +39,7 @@ function UploadDocument({ onFileSelect }) {
     <section className="w-full space-y-3">
       <div>
         <h2 className="text-lg font-semibold text-white">
-          1. Envie o Documento Original
+          1. Selecione o Documento Original
         </h2>
 
         <p className="mt-2 text-sm text-gray-400">
@@ -70,7 +70,7 @@ function UploadDocument({ onFileSelect }) {
         />
 
         <div className="rounded-md bg-zinc-700 px-4 py-2 text-sm text-white">
-          ↑ Upload
+          📄 Selecionar arquivo
         </div>
 
         <div className="text-sm text-gray-400">

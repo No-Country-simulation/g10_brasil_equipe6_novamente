@@ -42,6 +42,7 @@ function App() {
   const [parameters, setParameters] = useState({
     engine: "Nuvem",
     localModel: "",
+    apiKeyMode: "prebuilt",
     apiKey: "",
     profile: "Iniciante",
     niche: "Geral",
@@ -149,7 +150,7 @@ function App() {
     selectedFile &&
     !isGenerating &&
     (parameters.engine === "Nuvem"
-      ? parameters.apiKey.trim().length > 0
+      ? parameters.apiKeyMode === "prebuilt" || parameters.apiKey.trim().length > 0
       : !isLoadingModels &&
         !ollamaError &&
         parameters.localModel.length > 0);
@@ -275,7 +276,10 @@ function App() {
       } else {
         formData.append("motor", "Nuvem (Google Gemini)");
         formData.append("modelo_local", "");
-        formData.append("apiKey", parameters.apiKey);
+        formData.append(
+          "apiKey",
+          parameters.apiKeyMode === "custom" ? parameters.apiKey.trim() : ""
+        );
 
         const response = await fetch(API_URL, {
           method: "POST",

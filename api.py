@@ -1,9 +1,54 @@
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 import json
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import threading
+import time
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+load_dotenv(override=False)
+
+DEFAULT_SERVER_GOOGLE_API_KEY = (
+    os.getenv("GOOGLE_API_KEY", "").strip().strip('"').strip("'")
+)
+PREBUILT_RATE_LIMIT_MAX = int(os.getenv("PREBUILT_RATE_LIMIT_MAX", "10"))
+PREBUILT_RATE_LIMIT_WINDOW_SEC = int(
+    os.getenv("PREBUILT_RATE_LIMIT_WINDOW_SEC", "3600")
+)
+
+_LLM_ENV_LOCK = threading.Lock()
+_RATE_LIMIT_LOCK = threading.Lock()
+_PREBUILT_HITS: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _obter_ip_cliente(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _verificar_rate_limit_prebuilt(ip: str) -> None:
+    if PREBUILT_RATE_LIMIT_MAX <= 0:
+        return
+    agora = time.time()
+    limite_inicio = agora - PREBUILT_RATE_LIMIT_WINDOW_SEC
+    with _RATE_LIMIT_LOCK:
+        historico = _PREBUILT_HITS[ip]
+        while historico and historico[0] < limite_inicio:
+            historico.popleft()
+        if len(historico) >= PREBUILT_RATE_LIMIT_MAX:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Limite gratuito da chave integrada atingido ({PREBUILT_RATE_LIMIT_MAX} gerações por hora). "
+                    "Selecione 'Usar minha própria API Key' ou 'Local — Ollama' para continuar sem limites."
+                ),
+            )
+        historico.append(agora)
 
 from src.rag import processar_e_indexar_documento
 from src.rag.embeddings import get_embeddings
@@ -41,7 +86,11 @@ app.add_middleware(
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "service": "NovaMente API"}
+    return {
+        "status": "online",
+        "service": "NovaMente API",
+        "prebuilt_gemini_disponivel": bool(DEFAULT_SERVER_GOOGLE_API_KEY),
+    }
 
 
 def _salvar_evidencia_oci(resposta: dict, perfil: str, formato: str) -> None:
@@ -138,6 +187,7 @@ def finalizar_geracao_ollama_local(dados: FinalizarLocalRequest):
 
 @app.post("/api/adaptar")
 def adaptar_conteudo(
+    request: Request,
     file: UploadFile = File(...),
     perfil: str = Form(...),
     formato: str = Form(...),
@@ -154,15 +204,20 @@ def adaptar_conteudo(
         )
 
     nome_arquivo = (file.filename or "documento.txt").strip()
+    chave_usuario = (apiKey or "").strip()
+    usando_local = "Local" in motor
+    usando_prebuilt = (not usando_local) and (not chave_usuario)
 
-    # Configura o ambiente dinamicamente conforme a escolha do frontend
-    if "Local" in motor:
-        os.environ["USE_LOCAL_LLM"] = "True"
-        os.environ["OLLAMA_MODEL"] = modelo_local.strip() or "llama3.1:8b"
-    else:
-        os.environ["USE_LOCAL_LLM"] = "False"
-        if apiKey and apiKey.strip():
-            os.environ["GOOGLE_API_KEY"] = apiKey.strip()
+    if usando_prebuilt:
+        if not DEFAULT_SERVER_GOOGLE_API_KEY:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "A chave integrada do servidor não está configurada no momento. "
+                    "Selecione 'Usar minha própria API Key' ou 'Local — Ollama'."
+                ),
+            )
+        _verificar_rate_limit_prebuilt(_obter_ip_cliente(request))
 
     try:
         sucesso_rag = processar_e_indexar_documento(arquivo_bytes, nome_arquivo)
@@ -178,18 +233,37 @@ def adaptar_conteudo(
             detail="Falha ao ler/indexar o documento. Verifique se o arquivo possui texto legível.",
         )
 
-    try:
-        resposta = gerar_conteudo(
-            nome_ficheiro=nome_arquivo,
-            perfil=perfil,
-            formato=formato,
-            nicho=nicho,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ocorreu um erro inesperado ao gerar o conteúdo: {e}",
-        ) from e
+    # Configura o ambiente de forma isolada para evitar que uma chave BYOK sobrescreva a chave padrão do servidor
+    with _LLM_ENV_LOCK:
+        chave_anterior = os.environ.get("GOOGLE_API_KEY")
+        try:
+            if usando_local:
+                os.environ["USE_LOCAL_LLM"] = "True"
+                os.environ["OLLAMA_MODEL"] = modelo_local.strip() or "llama3.1:8b"
+            else:
+                os.environ["USE_LOCAL_LLM"] = "False"
+                os.environ["GOOGLE_API_KEY"] = (
+                    chave_usuario if chave_usuario else DEFAULT_SERVER_GOOGLE_API_KEY
+                )
+
+            resposta = gerar_conteudo(
+                nome_ficheiro=nome_arquivo,
+                perfil=perfil,
+                formato=formato,
+                nicho=nicho,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ocorreu um erro inesperado ao gerar o conteúdo: {e}",
+            ) from e
+        finally:
+            if DEFAULT_SERVER_GOOGLE_API_KEY:
+                os.environ["GOOGLE_API_KEY"] = DEFAULT_SERVER_GOOGLE_API_KEY
+            elif chave_anterior is not None:
+                os.environ["GOOGLE_API_KEY"] = chave_anterior
+            else:
+                os.environ.pop("GOOGLE_API_KEY", None)
 
     if resposta.get("status") != "sucesso":
         msg_erro = str(resposta.get("mensagem", "Erro na geração."))
